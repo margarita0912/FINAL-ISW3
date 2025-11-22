@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  db-qa:
+    image: postgres:15
+    container_name: db-qa
+    environment:
+      POSTGRES_DB: ventas-app
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    volumes:
+      - ./db/ventas-app.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+  db-prod:
+    image: postgres:15
+    container_name: db-prod
+    environment:
+      POSTGRES_DB: ventas-prod
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    volumes:
+      - ./db/ventas-prod.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+
+  ventas-app:
+    build:
+      context: ./ventas-app
+      dockerfile: ../Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db-qa
+      - db-prod
+    environment:
+      - DB_QA_URL=postgres://admin:admin123@db-qa:5432/ventas-app
+      - DB_PROD_URL=postgres://admin:admin123@db-prod:5432/ventas-prod
+
+  ventas-frontend:
+    build:
+      context: ./ventas-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ventas-app
+    environment:
+      - REACT_APP_API_URL=http://localhost:8080

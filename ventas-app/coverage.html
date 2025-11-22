@@ -1,0 +1,372 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>controllers: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">ventas-app/controllers/auth_controller.go (88.2%)</option>
+				
+				<option value="file1">ventas-app/controllers/compra_controller.go (100.0%)</option>
+				
+				<option value="file2">ventas-app/controllers/producto_controller.go (100.0%)</option>
+				
+				<option value="file3">ventas-app/controllers/usuario_controller.go (90.9%)</option>
+				
+				<option value="file4">ventas-app/controllers/venta_controller.go (100.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package controllers
+
+import (
+        "net/http"
+        "ventas-app/models"
+        "ventas-app/utils"
+
+        "ventas-app/database"
+
+        "github.com/gin-gonic/gin"
+        "golang.org/x/crypto/bcrypt"
+)
+
+type LoginInput struct {
+        Nombre string `json:"nombre"`
+        Clave  string `json:"clave"`
+}
+
+func Login(c *gin.Context) <span class="cov8" title="1">{
+        db := database.GetDB(c) // ← función centralizada en database/db_selector.go
+
+        var input LoginInput
+        if err := c.ShouldBindJSON(&amp;input); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">var user models.Usuario
+        if err := db.Where("nombre = ?", input.Nombre).First(&amp;user); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusUnauthorized, gin.H{"error": "Usuario no encontrado"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">if err := bcrypt.CompareHashAndPassword([]byte(user.Clave), []byte(input.Clave)); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusUnauthorized, gin.H{"error": "Clave incorrecta"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">token, err := utils.GenerateToken(user.ID, user.Rol)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "No se pudo generar el token"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">c.JSON(http.StatusOK, gin.H{
+                "token": token,
+                "rol":   user.Rol, // ← esto depende de tu modelo
+        })</span>
+
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package controllers
+
+import (
+        "net/http"
+        "ventas-app/database"
+        "ventas-app/models"
+
+        "github.com/gin-gonic/gin"
+)
+
+func RegistrarCompra(c *gin.Context) <span class="cov8" title="1">{
+        db := database.GetDB(c) // ← selecciona la base según el entorno
+
+        var compra models.Compra
+        if err := c.ShouldBindJSON(&amp;compra); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+                return
+        }</span>
+
+        // Validación adicional: producto_id y cantidad deben ser mayores que 0
+        <span class="cov8" title="1">if compra.ProductoID &lt;= 0 || compra.Cantidad &lt;= 0 </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">var producto models.Producto
+        if err := db.First(&amp;producto, compra.ProductoID); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Producto no encontrado"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">producto.Stock += compra.Cantidad
+
+        if err := db.Save(&amp;producto); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al actualizar el stock"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">if err := db.Create(&amp;compra); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al registrar la compra"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">c.JSON(http.StatusCreated, compra)</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package controllers
+
+import (
+        "net/http"
+        "ventas-app/database"
+        "ventas-app/models"
+
+        "github.com/gin-gonic/gin"
+)
+
+func CrearProducto(c *gin.Context) <span class="cov8" title="1">{
+        db := database.GetDB(c) // ← selecciona la base según el entorno
+
+        var p models.Producto
+        if err := c.ShouldBindJSON(&amp;p); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">if err := db.Create(&amp;p); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al guardar"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">c.JSON(http.StatusCreated, p)</span>
+}
+
+func ListarProductos(c *gin.Context) <span class="cov8" title="1">{
+        db := database.GetDB(c) // ← selecciona la base según el entorno
+
+        var productos []models.Producto
+        if err := db.Find(&amp;productos); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al listar productos"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">c.JSON(http.StatusOK, productos)</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package controllers
+
+import (
+        "net/http"
+        "strings"
+        "ventas-app/database"
+        "ventas-app/models"
+
+        "github.com/gin-gonic/gin"
+        "golang.org/x/crypto/bcrypt"
+)
+
+var rolesValidos = map[string]bool{
+        "vendedor":  true,
+        "comprador": true,
+        "precio":    true,
+}
+
+type CrearUsuarioInput struct {
+        Nombre string `json:"nombre" binding:"required"`
+        Clave  string `json:"clave" binding:"required"`
+        Rol    string `json:"rol" binding:"required"`
+}
+
+func CrearUsuario(c *gin.Context) <span class="cov8" title="1">{
+        db := database.GetDB(c) // ← selecciona la base según el entorno
+
+        var input CrearUsuarioInput
+        if err := c.ShouldBindJSON(&amp;input); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">input.Rol = strings.ToLower(input.Rol)
+        if !rolesValidos[input.Rol] </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Rol no permitido"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">var existente models.Usuario
+        if err := db.Where("nombre = ?", input.Nombre).First(&amp;existente); err == nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusConflict, gin.H{"error": "El usuario ya existe"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">hash, err := bcrypt.GenerateFromPassword([]byte(input.Clave), bcrypt.DefaultCost)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al encriptar la clave"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">usuario := models.Usuario{
+                Nombre: input.Nombre,
+                Clave:  string(hash),
+                Rol:    input.Rol,
+        }
+
+        if err := db.Create(&amp;usuario); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al crear el usuario"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">c.JSON(http.StatusCreated, gin.H{"mensaje": "Usuario creado correctamente"})</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package controllers
+
+import (
+        "net/http"
+        "ventas-app/database"
+        "ventas-app/models"
+
+        "github.com/gin-gonic/gin"
+)
+
+func RegistrarVenta(c *gin.Context) <span class="cov8" title="1">{
+        db := database.GetDB(c) // ← selecciona la base según el entorno
+
+        var venta models.Venta
+        if err := c.ShouldBindJSON(&amp;venta); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+                return
+        }</span>
+
+        // Validación adicional: producto_id y cantidad deben ser mayores que 0
+        <span class="cov8" title="1">if venta.ProductoID &lt;= 0 || venta.Cantidad &lt;= 0 </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Datos inválidos"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">var producto models.Producto
+        if err := db.First(&amp;producto, venta.ProductoID); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Producto no encontrado"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">if producto.Stock &lt; venta.Cantidad </span><span class="cov8" title="1">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Stock insuficiente"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">precioUnitario := producto.Precio
+        total := float64(venta.Cantidad) * precioUnitario
+        totalConDescuento := total * (1 - venta.Descuento/100)
+        totalConIVA := totalConDescuento * 1.21
+
+        venta.PrecioFinal = totalConIVA
+        producto.Stock -= venta.Cantidad
+
+        if err := db.Save(&amp;producto); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al actualizar el stock"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">if err := db.Create(&amp;venta); err != nil </span><span class="cov8" title="1">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Error al registrar la venta"})
+                return
+        }</span>
+
+        <span class="cov8" title="1">c.JSON(http.StatusCreated, venta)</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "types": ["jest", "node"],
+    "noEmit": true
+  },
+  "include": ["tests", "setupTests.ts"]
+}

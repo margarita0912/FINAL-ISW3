@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="5" failures="0" errors="0" time="21.491">
+  <testsuite name="undefined" errors="0" failures="0" skipped="0" timestamp="2025-11-08T20:56:56" time="14.648" tests="1">
+    <testcase classname=" valida token correctamente" name=" valida token correctamente" time="0.02">
+    </testcase>
+  </testsuite>
+  <testsuite name="undefined" errors="0" failures="0" skipped="0" timestamp="2025-11-08T20:56:56" time="15.855" tests="1">
+    <testcase classname=" renderiza factura con datos correctos" name=" renderiza factura con datos correctos" time="0.109">
+    </testcase>
+  </testsuite>
+  <testsuite name="undefined" errors="0" failures="0" skipped="0" timestamp="2025-11-08T20:56:56" time="15.936" tests="1">
+    <testcase classname=" permite ingresar producto y precio" name=" permite ingresar producto y precio" time="0.155">
+    </testcase>
+  </testsuite>
+  <testsuite name="undefined" errors="0" failures="0" skipped="0" timestamp="2025-11-08T20:56:56" time="16.567" tests="1">
+    <testcase classname=" Productos muestra lista obtenida desde API" name=" Productos muestra lista obtenida desde API" time="0.104">
+    </testcase>
+  </testsuite>
+  <testsuite name="undefined" errors="0" failures="0" skipped="0" timestamp="2025-11-08T20:56:56" time="16.598" tests="1">
+    <testcase classname=" Productos obtiene y muestra productos usando MSW (o fallback)" name=" Productos obtiene y muestra productos usando MSW (o fallback)" time="0.103">
+    </testcase>
+  </testsuite>
+</testsuites>
