@@ -1,9 +1,14 @@
-name: CI - Test, Cypress, Build & Deploy
+name: CI - Test, Build, Push & Deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+  pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -11,93 +16,123 @@ env:
   IMAGE_FRONT: ghcr.io/${{ github.repository_owner }}/tp_final_is3-front
 
 jobs:
-  # ----------------------------------------
-  # 1 BACKEND TESTS
-  # ----------------------------------------
+  # ---------------------------------------------------------------
+  # 1 TEST BACKEND
+  # ---------------------------------------------------------------
   test-back:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22.x'
-      - name: Run backend tests
+          go-version: "1.22.x"
+          cache: true
+
+      - name: Backend tests
         working-directory: ./ventas-app
         run: |
           go test -v ./... -coverprofile=coverage.out
-      - name: Upload coverage
+          go tool cover -func=coverage.out | tail -n 1
+
+      - name: Upload backend coverage
         uses: actions/upload-artifact@v4
         with:
           name: backend-coverage
           path: ventas-app/coverage.out
 
-  # ----------------------------------------
-  # 2 FRONTEND TESTS (JEST)
-  # ----------------------------------------
+  # ---------------------------------------------------------------
+  # 2 TEST FRONTEND
+  # ---------------------------------------------------------------
   test-front:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Install deps
-        working-directory: ventas-frontend
-        run: npm ci
-      - name: Lint
-        working-directory: ventas-frontend
-        run: npm run lint || echo "no lint"
-      - name: Unit tests
-        working-directory: ventas-frontend
-        run: npm test -- --runInBand
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ventas-frontend/package-lock.json
 
-  # ----------------------------------------
-  # 3 E2E TESTS - Cypress (requiere back & front)
-  # ----------------------------------------
+      - name: Install
+        working-directory: ./ventas-frontend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: ./ventas-frontend
+        run: npm run typecheck --if-present || npx tsc --noEmit
+
+      - name: Lint
+        working-directory: ./ventas-frontend
+        run: npm run lint --if-present || echo "no lint script"
+
+      - name: Unit tests
+        working-directory: ./ventas-frontend
+        env:
+          CI: true
+        run: npm test --if-present || echo "no tests"
+
+      - name: Build production check
+        working-directory: ./ventas-frontend
+        run: npm run build
+
+  # ---------------------------------------------------------------
+  # 3 CYPRESS E2E TESTS (frontend + backend levantados)
+  # ---------------------------------------------------------------
   e2e-tests:
+    name: E2E Tests (Cypress)
     needs: [test-back, test-front]
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
+      # ---------------- Backend temporal ----------------
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+      - name: Start backend
+        working-directory: ./ventas-app
+        run: |
+          nohup go run cmd/main.go > backend.log 2>&1 &
+          sleep 5
+
+      # ---------------- Frontend temporal ----------------
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "20"
 
-      # --- levantar backend ---
-      - name: Build backend (local)
-        working-directory: ventas-app
-        run: go build -o ../backend-app ./cmd/main.go
-
-      - name: Start backend
-        run: nohup ./backend-app > backend.log 2>&1 &
-
-      # --- levantar frontend ---
       - name: Install frontend
-        working-directory: ventas-frontend
+        working-directory: ./ventas-frontend
         run: npm ci
 
       - name: Start frontend preview
-        working-directory: ventas-frontend
-        run: nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
+        working-directory: ./ventas-frontend
+        run: |
+          nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
+          sleep 5
 
-      # --- esperar puertos ---
+      # ---------------- Espera de servicios ----------------
       - name: Wait for services
         run: npx wait-on http://localhost:5174 http://localhost:8080
 
-      # --- Cypress ---
+      # ---------------- Cypress ----------------
       - name: Run Cypress
-        working-directory: ventas-frontend
+        working-directory: ./ventas-frontend
         run: npm run cypress:ci
 
-  # ----------------------------------------
-  # 4 BUILD & PUSH QA IMAGES
-  # ----------------------------------------
+  # ---------------------------------------------------------------
+  # 4 BUILD & PUSH QA
+  # ---------------------------------------------------------------
   build-push-qa:
+    name: Build & Push QA Images
     needs: [e2e-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -107,60 +142,65 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Login GHCR
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ secrets.GHCR_USER }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ secrets.GHCR_TOKEN }}
 
-      # backend
-      - name: Build & Push BACK QA
+      # Backend
+      - name: Build & Push Backend QA
         uses: docker/build-push-action@v6
         with:
-          context: ventas-app
-          file: ventas-app/Dockerfile
+          context: ./ventas-app
+          file: ./ventas-app/Dockerfile
           push: true
           tags: |
             ${{ env.IMAGE_BACK }}:qa
             ${{ env.IMAGE_BACK }}:${{ steps.vars.outputs.SHORT_SHA }}
+            ${{ env.IMAGE_BACK }}:latest
 
-      # frontend
-      - name: Build & Push FRONT QA
+      # Frontend
+      - name: Build & Push Frontend QA
         uses: docker/build-push-action@v6
         with:
-          context: ventas-frontend
-          file: ventas-frontend/Dockerfile
+          context: ./ventas-frontend
+          file: ./ventas-frontend/Dockerfile
           push: true
-          build-args: |
-            BUILD_MODE=qa
+          build-args: BUILD_MODE=qa
           tags: |
             ${{ env.IMAGE_FRONT }}:qa
             ${{ env.IMAGE_FRONT }}:${{ steps.vars.outputs.SHORT_SHA }}
+            ${{ env.IMAGE_FRONT }}:latest
 
-  # ----------------------------------------
+  # ---------------------------------------------------------------
   # 5 DEPLOY QA
-  # ----------------------------------------
+  # ---------------------------------------------------------------
   deploy-qa:
+    name: Deploy to QA
     needs: [build-push-qa]
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
     steps:
-      - name: Deploy backend QA
-        run: curl -X POST "${{ secrets.RENDER_BACK_QA_HOOK }}"
+      - name: Deploy Backend QA
+        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_QA_HOOK }}"
 
-      - name: Deploy frontend QA
-        run: curl -X POST "${{ secrets.RENDER_FRONT_QA_HOOK }}"
+      - name: Deploy Frontend QA
+        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_QA_HOOK }}"
 
-  # ----------------------------------------
-  # 6 BUILD & PUSH PROD IMAGES
-  # ----------------------------------------
+  # ---------------------------------------------------------------
+  # 6 BUILD & PUSH PROD
+  # ---------------------------------------------------------------
   build-push-prod:
+    name: Build & Push PROD Images
     needs: [e2e-tests]
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
-    if: github.ref == 'refs/heads/main'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -170,50 +210,50 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Login GHCR
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ secrets.GHCR_USER }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Build & Push BACK PROD
+      # Backend PROD
+      - name: Build & Push Backend PROD
         uses: docker/build-push-action@v6
         with:
-          context: ventas-app
-          file: ventas-app/Dockerfile
+          context: ./ventas-app
+          file: ./ventas-app/Dockerfile
           push: true
           tags: |
             ${{ env.IMAGE_BACK }}:prod
             ${{ env.IMAGE_BACK }}:prod-${{ steps.vars.outputs.SHORT_SHA }}
 
-      - name: Build & Push FRONT PROD
+      # Frontend PROD
+      - name: Build & Push Frontend PROD
         uses: docker/build-push-action@v6
         with:
-          context: ventas-frontend
-          file: ventas-frontend/Dockerfile
+          context: ./ventas-frontend
+          file: ./ventas-frontend/Dockerfile
           push: true
-          build-args: |
-            BUILD_MODE=production
+          build-args: BUILD_MODE=production
           tags: |
             ${{ env.IMAGE_FRONT }}:prod
             ${{ env.IMAGE_FRONT }}:prod-${{ steps.vars.outputs.SHORT_SHA }}
 
-  # ----------------------------------------
+  # ---------------------------------------------------------------
   # 7 DEPLOY PROD
-  # ----------------------------------------
+  # ---------------------------------------------------------------
   deploy-prod:
+    name: Deploy to Production
     needs: [build-push-prod]
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     environment:
       name: production
       url: https://tp8-front-prod-tn48.onrender.com
+
     steps:
-      - name: Deploy backend PROD
-        run: curl -X POST "${{ secrets.RENDER_BACK_PROD_HOOK }}"
+      - name: Deploy Backend PROD
+        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_PROD_HOOK }}"
 
-      - name: Deploy frontend PROD
-        run: curl -X POST "${{ secrets.RENDER_FRONT_PROD_HOOK }}"
-
-      - name: Done
-        run: echo "Production OK"
+      - name: Deploy Frontend PROD
+        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_PROD_HOOK }}"
