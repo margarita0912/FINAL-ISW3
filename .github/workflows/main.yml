@@ -171,7 +171,10 @@ jobs:
       # WAIT
       - name: Wait for services
         run: |
-          npx wait-on http://localhost:5174 http://localhost:8080/productos --timeout 120000
+          npx wait-on \
+            http-get://localhost:8080 \
+            http-get://localhost:5174 \
+            --timeout 180000
 
       # CYPRESS
       - name: Run Cypress
