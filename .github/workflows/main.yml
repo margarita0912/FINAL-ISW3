@@ -75,16 +75,13 @@ jobs:
           --health-retries=5
 
     steps:
-      # --- CODE ---
       - uses: actions/checkout@v4
 
-      # --- BACKEND ARTIFACT ---
       - uses: actions/download-artifact@v4
         with:
           name: backend-app
           path: .
 
-      # --- CREATE ENV FILES FOR CI ---
       - name: Create .env files for CI
         run: |
           echo "DB_HOST=127.0.0.1" > .env.qa
@@ -93,19 +90,14 @@ jobs:
           echo "DB_PASS=rootpass" >> .env.qa
           echo "DB_NAME=ventas" >> .env.qa
           echo "DB_SSL_MODE=disable" >> .env.qa
-
           cp .env.qa .env.prod
 
-      # --- START BACKEND ---
       - name: Start backend
         run: |
           chmod +x backend-app
           nohup ./backend-app > backend.log 2>&1 &
           sleep 2
-          echo "Backend log:"
-          tail -n 50 backend.log || true
 
-      # --- FRONTEND INSTALL ---
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -113,32 +105,28 @@ jobs:
       - run: npm ci
         working-directory: ./ventas-frontend
 
-      # --- START FRONTEND ---
+      # 👇 ESTA ES LA CLAVE
+      - name: Build frontend again for E2E
+        working-directory: ./ventas-frontend
+        run: npm run build
+
       - name: Start frontend preview
         working-directory: ./ventas-frontend
         run: |
-          nohup npm run preview > frontend.log 2>&1 &
+          nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
           sleep 2
-          echo "Frontend log:"
-          tail -n 50 frontend.log || true
 
-      # --- WAIT FOR SERVICES ---
-      - name: Wait for backend and frontend
+      - name: Wait for backend & frontend
         run: |
           echo "Waiting for frontend (5174) AND backend (8080)..."
           npx wait-on --http-get http://localhost:5174/ http://localhost:8080/productos --timeout 120000
 
-      # --- PORT DEBUG ---
-      - run: |
-          echo "Listening ports:"
-          ss -ltnp || true
+      - run: ss -ltnp || true
 
-      # --- RUN CYPRESS ---
       - name: Run Cypress
         working-directory: ./ventas-frontend
         run: npm run cypress:ci
 
-      # --- LOGS ON FAILURE ---
       - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v4
