@@ -199,12 +199,12 @@ jobs:
       - name: Start frontend preview
         working-directory: ./ventas-frontend
         run: |
-          nohup npm run preview -- --port 4173 &
+          nohup npm run preview -- --port 5174 &
 
       - name: Wait for frontend
         run: |
           n=0
-          until curl -s http://localhost:4173 > /dev/null; do
+          until curl -s http://localhost:5174 > /dev/null; do
             n=$((n+1))
             if [ $n -ge 20 ]; then
               echo "Frontend did not start in time"
