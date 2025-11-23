@@ -126,7 +126,7 @@ jobs:
       - name: Wait for backend and frontend
         run: |
           echo "Waiting for frontend (5174) AND backend (8080)..."
-          npx wait-on http://localhost:5174 http://localhost:8080 --timeout 120000
+          npx wait-on --http-get http://localhost:5174/ http://localhost:8080/productos --timeout 120000
 
       # --- PORT DEBUG ---
       - run: |
