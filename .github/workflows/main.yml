@@ -1,184 +1,120 @@
-name: CI Pipeline
+name: CI/CD - TP8
 
 on:
   push:
     branches: ["main", "qa"]
-  pull_request:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BACK: ghcr.io/${{ github.repository_owner }}/ventas-back
+  IMAGE_FRONT: ghcr.io/${{ github.repository_owner }}/ventas-front
 
 jobs:
-  check:
+
+  # -------------------------------------------------------------
+  # 1 CHECKOUT + LOGIN GHCR
+  # -------------------------------------------------------------
+  prepare:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: echo "Pipeline OK"
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-  # ----------------------------------------------------
-  # BUILD BACKEND
-  # ----------------------------------------------------
-  build_backend:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_PAT }}
+
+  # -------------------------------------------------------------
+  # 2 BUILD & PUSH IMAGENES (BACK + FRONT)
+  # -------------------------------------------------------------
+  build_and_push:
     runs-on: ubuntu-latest
-    needs: check
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-
-      - name: Build backend binary
-        working-directory: ./ventas-app
-        run: go build -o ../backend-app ./cmd/main.go
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: backend-app
-          path: backend-app
-
-  # ----------------------------------------------------
-  # TEST BACKEND
-  # ----------------------------------------------------
-  test_backend:
-    runs-on: ubuntu-latest
-    needs: build_backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-
-      - name: Run backend tests
-        working-directory: ./ventas-app
-        run: go test ./... -v
-
-  # ----------------------------------------------------
-  # BUILD FRONTEND
-  # ----------------------------------------------------
-  build_frontend:
-    runs-on: ubuntu-latest
-    needs: check
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - run: npm ci
-        working-directory: ./ventas-frontend
-
-      - run: npm run build
-        working-directory: ./ventas-frontend
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: ventas-frontend/dist
-
-  # ----------------------------------------------------
-  # TEST FRONTEND
-  # ----------------------------------------------------
-  test_frontend:
-    runs-on: ubuntu-latest
-    needs: build_frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - run: npm ci
-        working-directory: ./ventas-frontend
-
-      - run: npm run test:ci
-        working-directory: ./ventas-frontend
-
-  # ----------------------------------------------------
-  # CYPRESS E2E TESTS
-  # ----------------------------------------------------
-  e2e_tests:
-    runs-on: ubuntu-latest
-    needs: [build_backend, build_frontend]
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: rootpass
-          MYSQL_DATABASE: ventas
-        ports:
-          - "3306:3306"
-        options: >-
-          --health-cmd="mysqladmin ping --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+    needs: prepare
 
     steps:
       - uses: actions/checkout@v4
 
-      # BACKEND
-      - uses: actions/download-artifact@v4
-        with:
-          name: backend-app
-          path: .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      # FRONTEND (dist)
-      - uses: actions/download-artifact@v4
+      # ------- Backend -------
+      - name: Build & Push Backend
+        uses: docker/build-push-action@v5
         with:
-          name: frontend-dist
-          path: dist
+          context: ventas-app
+          file: ventas-app/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_BACK }}:latest
+            ${{ env.IMAGE_BACK }}:${{ github.sha }}
 
-      # ENV FILES
-      - name: Create envs
+      # ------- Frontend -------
+      - name: Build & Push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ventas-frontend
+          file: ventas-frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_FRONT }}:latest
+            ${{ env.IMAGE_FRONT }}:${{ github.sha }}
+
+  # -------------------------------------------------------------
+  # 3 DEPLOY QA AUTOMÁTICO EN RENDER
+  # -------------------------------------------------------------
+  deploy_qa:
+    runs-on: ubuntu-latest
+    needs: build_and_push
+
+    steps:
+      - name: Deploy Backend QA
         run: |
-          echo "DB_HOST=127.0.0.1" > .env.qa
-          echo "DB_PORT=3306" >> .env.qa
-          echo "DB_USER=root" >> .env.qa
-          echo "DB_PASS=rootpass" >> .env.qa
-          echo "DB_NAME=ventas" >> .env.qa
-          echo "DB_SSL_MODE=disable" >> .env.qa
-          cp .env.qa .env.prod
+          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_BACKEND_QA_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": false}'
 
-      # START BACKEND
-      - name: Start backend
+      - name: Deploy Frontend QA
         run: |
-          chmod +x backend-app
-          nohup ./backend-app > backend.log 2>&1 &
-          sleep 3
-          tail -n 50 backend.log || true
+          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_FRONTEND_QA_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": false}'
 
-      # START FRONTEND PREVIEW USING dist/
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+  # -------------------------------------------------------------
+  # 4 GATE MANUAL ANTES DE PROD
+  # -------------------------------------------------------------
+  approve_prod:
+    runs-on: ubuntu-latest
+    needs: deploy_qa
+    environment:
+      name: prod
+      url: https://render.com
+    steps:
+      - run: echo "Esperando aprobación manual para PROD..."
 
-      - run: npm ci
-        working-directory: ./ventas-frontend
+  # -------------------------------------------------------------
+  # 5 DEPLOY PROD (DESPUÉS DE LA APROBACIÓN)
+  # -------------------------------------------------------------
+  deploy_prod:
+    runs-on: ubuntu-latest
+    needs: approve_prod
 
-      - name: Start preview server using built dist
+    steps:
+      - name: Deploy Backend PROD
         run: |
-          nohup npx vite preview --port 5174 --host 0.0.0.0 --outDir dist > frontend.log 2>&1 &
-          sleep 3
-          tail -n 80 frontend.log || true
+          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_BACKEND_PROD_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": false}'
 
-      # WAIT
-      - name: Wait for frontend and backend
+      - name: Deploy Frontend PROD
         run: |
-          echo "Waiting for services..."
-          npx wait-on http://localhost:5174 http://localhost:8080/productos --timeout 120000
-
-      # CY
-      - name: Run Cypress
-        working-directory: ./ventas-frontend
-        run: npm run cypress:ci
-
-      - name: Upload logs on fail
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-logs
-          path: |
-            backend.log
-            frontend.log
+          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_FRONTEND_PROD_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache": false}"
