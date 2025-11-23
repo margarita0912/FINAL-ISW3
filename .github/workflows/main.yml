@@ -6,6 +6,9 @@ on:
   pull_request:
 
 jobs:
+  # ----------------------------------------
+  # CHECK BASIC PIPELINE
+  # ----------------------------------------
   check:
     runs-on: ubuntu-latest
     steps:
@@ -105,33 +108,6 @@ jobs:
         with:
           go-version: "1.22"
 
-      - name: Select environment (qa or prod)
-        id: envselect
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "ENVIRONMENT=prod" >> $GITHUB_OUTPUT
-          else
-            echo "ENVIRONMENT=qa" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Export DB variables
-        run: |
-          if [ "${{ steps.envselect.outputs.ENVIRONMENT }}" = "qa" ]; then
-            echo "DB_HOST=${{ secrets.QA_DB_HOST }}" >> $GITHUB_ENV
-            echo "DB_PORT=${{ secrets.QA_DB_PORT }}" >> $GITHUB_ENV
-            echo "DB_USER=${{ secrets.QA_DB_USER }}" >> $GITHUB_ENV
-            echo "DB_PASS=${{ secrets.QA_DB_PASS }}" >> $GITHUB_ENV
-            echo "DB_NAME=${{ secrets.QA_DB_NAME }}" >> $GITHUB_ENV
-            echo "DB_SSL_MODE=${{ secrets.QA_DB_SSL_MODE }}" >> $GITHUB_ENV
-          else
-            echo "DB_HOST=${{ secrets.PROD_DB_HOST }}" >> $GITHUB_ENV
-            echo "DB_PORT=${{ secrets.PROD_DB_PORT }}" >> $GITHUB_ENV
-            echo "DB_USER=${{ secrets.PROD_DB_USER }}" >> $GITHUB_ENV
-            echo "DB_PASS=${{ secrets.PROD_DB_PASS }}" >> $GITHUB_ENV
-            echo "DB_NAME=${{ secrets.PROD_DB_NAME }}" >> $GITHUB_ENV
-            echo "DB_SSL_MODE=${{ secrets.PROD_DB_SSL_MODE }}" >> $GITHUB_ENV
-          fi
-
       - name: Run backend tests
         working-directory: ./ventas-app
         run: go test ./... -v
@@ -160,7 +136,7 @@ jobs:
         run: npm test -- --ci --watchAll=false
 
   # ----------------------------------------
-  # CYPRESS E2E
+  # CYPRESS E2E TESTS
   # ----------------------------------------
   e2e_tests:
     runs-on: ubuntu-latest
@@ -175,33 +151,6 @@ jobs:
           name: backend-app
           path: .
 
-      - name: Select environment (qa or prod)
-        id: envselect
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "ENVIRONMENT=prod" >> $GITHUB_OUTPUT
-          else
-            echo "ENVIRONMENT=qa" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Export DB variables
-        run: |
-          if [ "${{ steps.envselect.outputs.ENVIRONMENT }}" = "qa" ]; then
-            echo "DB_HOST=${{ secrets.QA_DB_HOST }}" >> $GITHUB_ENV
-            echo "DB_PORT=${{ secrets.QA_DB_PORT }}" >> $GITHUB_ENV
-            echo "DB_USER=${{ secrets.QA_DB_USER }}" >> $GITHUB_ENV
-            echo "DB_PASS=${{ secrets.QA_DB_PASS }}" >> $GITHUB_ENV
-            echo "DB_NAME=${{ secrets.QA_DB_NAME }}" >> $GITHUB_ENV
-            echo "DB_SSL_MODE=${{ secrets.QA_DB_SSL_MODE }}" >> $GITHUB_ENV
-          else
-            echo "DB_HOST=${{ secrets.PROD_DB_HOST }}" >> $GITHUB_ENV
-            echo "DB_PORT=${{ secrets.PROD_DB_PORT }}" >> $GITHUB_ENV
-            echo "DB_USER=${{ secrets.PROD_DB_USER }}" >> $GITHUB_ENV
-            echo "DB_PASS=${{ secrets.PROD_DB_PASS }}" >> $GITHUB_ENV
-            echo "DB_NAME=${{ secrets.PROD_DB_NAME }}" >> $GITHUB_ENV
-            echo "DB_SSL_MODE=${{ secrets.PROD_DB_SSL_MODE }}" >> $GITHUB_ENV
-          fi
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -211,29 +160,38 @@ jobs:
         working-directory: ./ventas-frontend
         run: npm ci
 
-      - name: Start backend
+      - name: Start backend (with logging)
         run: |
           chmod +x backend-app
-          ./backend-app &
+          nohup ./backend-app > backend.log 2>&1 &
+          echo "Backend iniciado. Logs:"
+          tail -n 50 backend.log || true
         env:
-          DB_HOST: ${{ env.DB_HOST }}
-          DB_PORT: ${{ env.DB_PORT }}
-          DB_USER: ${{ env.DB_USER }}
-          DB_PASS: ${{ env.DB_PASS }}
-          DB_NAME: ${{ env.DB_NAME }}
-          DB_SSL_MODE: ${{ env.DB_SSL_MODE }}
+          DB_HOST: ${{ secrets.QA_DB_HOST }}
+          DB_PORT: ${{ secrets.QA_DB_PORT }}
+          DB_USER: ${{ secrets.QA_DB_USER }}
+          DB_PASS: ${{ secrets.QA_DB_PASS }}
+          DB_NAME: ${{ secrets.QA_DB_NAME }}
+          DB_SSL_MODE: ${{ secrets.QA_DB_SSL_MODE }}
 
       - name: Start frontend preview
         working-directory: ./ventas-frontend
         run: |
-          # Use preview to serve the built site on port 5174 (matches Cypress baseUrl)
-          nohup npm run preview -- --port 5174 &
+          echo "Starting frontend preview on port 5174..."
+          nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
+          sleep 1
+          tail -n 50 frontend.log || true
 
       - name: Wait for services
-        working-directory: ./ventas-frontend
         run: |
-          # wait for frontend (5174) and backend (8080)
-          npx wait-on http://localhost:5174 http://localhost:8080
+          echo "Esperando frontend (5174) y backend (8080)..."
+          npx wait-on --timeout 90000 http://localhost:5174 http://localhost:8080
+          echo "Servicios arriba!"
+
+      - name: List listening ports
+        run: |
+          echo "Listening ports:"
+          ss -ltnp || netstat -ltnp || true
 
       - name: Run Cypress tests
         working-directory: ./ventas-frontend

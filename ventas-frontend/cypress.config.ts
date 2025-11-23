@@ -2,7 +2,7 @@ import { defineConfig } from "cypress";
 
 export default defineConfig({
   e2e: {
-    baseUrl: 'http://localhost:5173', // QA frontend (Vite runs on 5173)
+    baseUrl: 'http://localhost:5174', // QA frontend (Vite runs on 5173)
     viewportWidth: 1280,
     viewportHeight: 720,
     defaultCommandTimeout: 10000,
