@@ -177,21 +177,53 @@ jobs:
       - name: Start frontend preview
         working-directory: ./ventas-frontend
         run: |
-          echo "Starting frontend preview on port 5174..."
-          nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
-          sleep 1
-          tail -n 50 frontend.log || true
+            # Use preview to serve the built site on port 5174 (matches Cypress baseUrl)
+            # Redirect logs to frontend.log for diagnostics
+            nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
+            sleep 1
+            echo "---- frontend log (start) ----"
+            tail -n 200 frontend.log || true
 
-      - name: Wait for services
+      - name: Wait for services (with diagnostics on failure)
+        working-directory: ./ventas-frontend
         run: |
-          echo "Esperando frontend (5174) y backend (8080)..."
-          npx wait-on --timeout 90000 http://localhost:5174 http://localhost:8080
-          echo "Servicios arriba!"
+          echo "Waiting for frontend (5174) and backend (8080) to be available..."
+          if npx wait-on --timeout 120000 http://localhost:5174 http://localhost:8080; then
+            echo "Services are up"
+          else
+            echo "Wait-on timed out. Collecting diagnostics..."
+            echo "---- backend.log (last 200 lines) ----"
+            if [ -f ../backend.log ]; then
+              tail -n 200 ../backend.log || true
+            else
+              echo "No backend.log found at repo root"
+            fi
+            echo "---- frontend.log (last 200 lines) ----"
+            if [ -f frontend.log ]; then
+              tail -n 200 frontend.log || true
+            else
+              echo "No frontend.log found"
+            fi
+            echo "---- listening ports ----"
+            ss -ltnp || netstat -ltnp || true
+            echo "---- recent journalctl (if available) ----"
+            journalctl -u backend-app --no-pager -n 200 || true
+            exit 1
+          fi
 
       - name: List listening ports
         run: |
           echo "Listening ports:"
           ss -ltnp || netstat -ltnp || true
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: |
+            backend.log
+            ventas-frontend/frontend.log
 
       - name: Run Cypress tests
         working-directory: ./ventas-frontend

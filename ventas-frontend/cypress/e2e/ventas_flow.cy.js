@@ -7,15 +7,15 @@ describe('Flujos completos de ventas (E2E)', () => {
       body: { token: 'fake-jwt-token', rol: 'vendedor' }
     }).as('login')
 
-    // 1. Login directo
-    cy.visit('http://localhost:5173/login')
+    // 1. Login directo (usa baseUrl)
+    cy.visit('/login')
     cy.get('input[placeholder="Email"]').type('vendedor@test.com')
     cy.get('input[placeholder="Password"]').type('password123')
     cy.get('button').contains('Ingresar').click()
     cy.wait('@login')
 
     // 2. Ir a ventas y esperar sin interceptors problemáticos
-    cy.visit('http://localhost:5173/ventas')
+    cy.visit('/ventas')
     cy.contains('Registrar Venta', { timeout: 10000 }).should('be.visible')
     
     // Esperar a que aparezca el select con productos (sin wait específico)

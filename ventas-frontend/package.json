@@ -12,7 +12,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:ci": "jest --coverage --runInBand --silent --watchAll=false",
-    "cypress:ci": "wait-on http://localhost:5173 && cypress run --spec \"cypress/e2e/ventas_flow.cy.js,cypress/e2e/acceptance.cy.js\" --config baseUrl=http://localhost:5173"
+    "cypress:ci": "wait-on http://localhost:5174 && cypress run --spec \"cypress/e2e/ventas_flow.cy.js,cypress/e2e/acceptance.cy.js\" --config baseUrl=http://localhost:5174"
   },
   "dependencies": {
     "axios": "^1.12.2",
