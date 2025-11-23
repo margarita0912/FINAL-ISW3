@@ -83,3 +83,46 @@ jobs:
         working-directory: ./ventas-frontend
         run: npm run build
 
+
+  test_backend:
+    runs-on: ubuntu-latest
+    needs: build_backend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Set environment variables depending on branch
+        id: envselect
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "ENVIRONMENT=prod" >> $GITHUB_OUTPUT
+          else
+            echo "ENVIRONMENT=qa" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Export DB variables (QA or PROD)
+        run: |
+          if [ "${{ steps.envselect.outputs.ENVIRONMENT }}" = "qa" ]; then
+            echo "DB_HOST=${{ secrets.QA_DB_HOST }}" >> $GITHUB_ENV
+            echo "DB_PORT=${{ secrets.QA_DB_PORT }}" >> $GITHUB_ENV
+            echo "DB_USER=${{ secrets.QA_DB_USER }}" >> $GITHUB_ENV
+            echo "DB_PASS=${{ secrets.QA_DB_PASS }}" >> $GITHUB_ENV
+            echo "DB_NAME=${{ secrets.QA_DB_NAME }}" >> $GITHUB_ENV
+            echo "DB_SSL_MODE=${{ secrets.QA_DB_SSL_MODE }}" >> $GITHUB_ENV
+          else
+            echo "DB_HOST=${{ secrets.PROD_DB_HOST }}" >> $GITHUB_ENV
+            echo "DB_PORT=${{ secrets.PROD_DB_PORT }}" >> $GITHUB_ENV
+            echo "DB_USER=${{ secrets.PROD_DB_USER }}" >> $GITHUB_ENV
+            echo "DB_PASS=${{ secrets.PROD_DB_PASS }}" >> $GITHUB_ENV
+            echo "DB_NAME=${{ secrets.PROD_DB_NAME }}" >> $GITHUB_ENV
+            echo "DB_SSL_MODE=${{ secrets.PROD_DB_SSL_MODE }}" >> $GITHUB_ENV
+          fi
+
+      - name: Run backend tests
+        working-directory: ./ventas-app
+        run: go test ./... -v
