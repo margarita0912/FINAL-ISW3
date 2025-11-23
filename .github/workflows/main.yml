@@ -1,120 +1,192 @@
-name: CI/CD - TP8
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: ["main", "qa"]
-  workflow_dispatch:
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_BACK: ghcr.io/${{ github.repository_owner }}/tp_final_is3/ventas-back
-  IMAGE_FRONT: ghcr.io/${{ github.repository_owner }}/tp_final_is3/ventas-front
+    branches:
+      - main
+      - qa
 
 jobs:
 
-  # -------------------------------------------------------------
-  # 1 CHECKOUT + LOGIN GHCR
-  # -------------------------------------------------------------
-  prepare:
+  # --------------------------------------------------
+  # 1 TEST BACKEND
+  # --------------------------------------------------
+  test-back:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Run backend tests
+        working-directory: ventas-app
+        run: go test ./...
+
+  # --------------------------------------------------
+  # 2 TEST FRONTEND
+  # --------------------------------------------------
+  test-front:
+    runs-on: ubuntu-latest
+    needs: test-back
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - working-directory: ventas-frontend
+        run: npm ci && npm run test:ci
+
+  # --------------------------------------------------
+  # 3 CYPRESS E2E (usa backend real y los builds locales)
+  # --------------------------------------------------
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: test-front
+
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: pass
+          MYSQL_DATABASE: ventas
+        ports:
+          - "3306:3306"
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # BACKEND
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - run: |
+          cd ventas-app
+          echo "DB_HOST=127.0.0.1" > .env.qa
+          echo "DB_PORT=3306" >> .env.qa
+          echo "DB_USER=root" >> .env.qa
+          echo "DB_PASS=pass" >> .env.qa
+          echo "DB_NAME=ventas" >> .env.qa
+      - run: |
+          cd ventas-app
+          go build -o ../backend-ci
+          nohup ../backend-ci > backend.log 2>&1 &
+
+      # FRONTEND
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - working-directory: ventas-frontend
+        run: |
+          npm ci
+          nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
+
+      # WAIT
+      - run: |
+          npx wait-on http://localhost:8080 http://localhost:5174
+
+      # CYPRESS
+      - working-directory: ventas-frontend
+        run: npm run cypress:ci
+
+  # --------------------------------------------------
+  # 4 BUILD & PUSH QA
+  # --------------------------------------------------
+  build-push-qa:
+    runs-on: ubuntu-latest
+    needs: e2e-tests
+
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.GHCR_PAT }}
 
-  # -------------------------------------------------------------
-  # 2 BUILD & PUSH IMAGENES (BACK + FRONT)
-  # -------------------------------------------------------------
-  build_and_push:
-    runs-on: ubuntu-latest
-    needs: prepare
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # ------- Backend -------
-      - name: Build & Push Backend
+      - name: Build & Push Backend QA
         uses: docker/build-push-action@v5
         with:
           context: ventas-app
           file: ventas-app/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_BACK }}:latest
-            ${{ env.IMAGE_BACK }}:${{ github.sha }}
+            ghcr.io/cotystrumia/tp_final_is3/ventas-back-qa:latest
+            ghcr.io/cotystrumia/tp_final_is3/ventas-back-qa:${{ github.sha }}
 
-      # ------- Frontend -------
-      - name: Build & Push Frontend
+      - name: Build & Push Frontend QA
         uses: docker/build-push-action@v5
         with:
           context: ventas-frontend
           file: ventas-frontend/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_FRONT }}:latest
-            ${{ env.IMAGE_FRONT }}:${{ github.sha }}
+            ghcr.io/cotystrumia/tp_final_is3/ventas-front-qa:latest
+            ghcr.io/cotystrumia/tp_final_is3/ventas-front-qa:${{ github.sha }}
 
-  # -------------------------------------------------------------
-  # 3 DEPLOY QA AUTOMÁTICO EN RENDER
-  # -------------------------------------------------------------
-  deploy_qa:
+  # --------------------------------------------------
+  # 5 DEPLOY QA
+  # --------------------------------------------------
+  deploy-qa:
     runs-on: ubuntu-latest
-    needs: build_and_push
+    needs: build-push-qa
 
     steps:
-      - name: Deploy Backend QA
+      - name: Deploy to QA (Render)
         run: |
-          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_BACKEND_QA_ID }}/deploys" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache": false}'
+          curl -X POST ${{ secrets.RENDER_QA_DEPLOY_HOOK }}
 
-      - name: Deploy Frontend QA
-        run: |
-          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_FRONTEND_QA_ID }}/deploys" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache": false}'
-
-  # -------------------------------------------------------------
-  # 4 GATE MANUAL ANTES DE PROD
-  # -------------------------------------------------------------
-  approve_prod:
+  # --------------------------------------------------
+  # 6 BUILD & PUSH PROD
+  # --------------------------------------------------
+  build-push-prod:
     runs-on: ubuntu-latest
-    needs: deploy_qa
-    environment:
-      name: prod
-      url: https://render.com
-    steps:
-      - run: echo "Esperando aprobación manual para PROD..."
-
-  # -------------------------------------------------------------
-  # 5 DEPLOY PROD (DESPUÉS DE LA APROBACIÓN)
-  # -------------------------------------------------------------
-  deploy_prod:
-    runs-on: ubuntu-latest
-    needs: approve_prod
+    needs: deploy-qa
 
     steps:
-      - name: Deploy Backend PROD
-        run: |
-          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_BACKEND_PROD_ID }}/deploys" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache": false}'
+      - uses: actions/checkout@v4
 
-      - name: Deploy Frontend PROD
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      - name: Build & Push Backend PROD
+        uses: docker/build-push-action@v5
+        with:
+          context: ventas-app
+          file: ventas-app/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/cotystrumia/tp_final_is3/ventas-back-prod:latest
+            ghcr.io/cotystrumia/tp_final_is3/ventas-back-prod:${{ github.sha }}
+
+      - name: Build & Push Frontend PROD
+        uses: docker/build-push-action@v5
+        with:
+          context: ventas-frontend
+          file: ventas-frontend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/cotystrumia/tp_final_is3/ventas-front-prod:latest
+            ghcr.io/cotystrumia/tp_final_is3/ventas-front-prod:${{ github.sha }}
+
+  # --------------------------------------------------
+  # 7 DEPLOY PROD
+  # --------------------------------------------------
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: build-push-prod
+
+    steps:
+      - name: Deploy to Production (Render)
         run: |
-          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_FRONTEND_PROD_ID }}/deploys" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache": false}"
+          curl -X POST ${{ secrets.RENDER_PROD_DEPLOY_HOOK }}
