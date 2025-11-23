@@ -20,6 +20,7 @@ func Setup(r *gin.Engine) {
 	r.POST("/usuarios", controllers.CrearUsuario)
 
 	r.GET("/productos", controllers.ListarProductos)
+	r.HEAD("/productos", controllers.ListarProductos)
 	//r.POST("/productos", middleware.AuthRequired("vendedor", "comprador"), controllers.CrearProducto)
 	r.POST("/productos", controllers.CrearProducto)
 
