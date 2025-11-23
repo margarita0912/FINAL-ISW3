@@ -14,3 +14,53 @@ jobs:
 
       - name: Test pipeline
         run: echo "GitHub Actions funcionando correctamente."
+
+  build_backend:
+    runs-on: ubuntu-latest
+    # Determina ambiente (prod en main, qa en otras ramas)
+    env:
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prod' || 'qa' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Show selected environment (debug)
+        run: |
+          echo "ENVIRONMENT=$ENVIRONMENT"
+
+      - name: Build backend (production)
+        if: github.ref == 'refs/heads/main'
+        working-directory: ./ventas-app
+        env:
+          DB_HOST: ${{ secrets.PROD_DB_HOST }}
+          DB_PORT: ${{ secrets.PROD_DB_PORT }}
+          DB_USER: ${{ secrets.PROD_DB_USER }}
+          DB_PASS: ${{ secrets.PROD_DB_PASS }}
+          DB_NAME: ${{ secrets.PROD_DB_NAME }}
+          DB_SSL_MODE: ${{ secrets.PROD_DB_SSL_MODE }}
+        run: |
+          mkdir -p bin
+          echo "Building for production..."
+          go build -v -o bin/ventas-app ./cmd
+
+      - name: Build backend (qa)
+        if: github.ref != 'refs/heads/main'
+        working-directory: ./ventas-app
+        env:
+          DB_HOST: ${{ secrets.QA_DB_HOST }}
+          DB_PORT: ${{ secrets.QA_DB_PORT }}
+          DB_USER: ${{ secrets.QA_DB_USER }}
+          DB_PASS: ${{ secrets.QA_DB_PASS }}
+          DB_NAME: ${{ secrets.QA_DB_NAME }}
+          DB_SSL_MODE: ${{ secrets.QA_DB_SSL_MODE }}
+        run: |
+          mkdir -p bin
+          echo "Building for QA..."
+          go build -v -o bin/ventas-app ./cmd
+
