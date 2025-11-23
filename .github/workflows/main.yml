@@ -211,8 +211,8 @@ jobs:
         run: |
           # Use preview to serve the built site on port 5174 (matches Cypress baseUrl)
           # Redirect logs to frontend.log for diagnostics
-          nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
-          sleep 1
+          nohup npm run preview -- --port 5174 --host 0.0.0.0 > frontend.log 2>&1 &
+          sleep 2
           echo "---- frontend log (start) ----"
           tail -n 200 frontend.log || true
 
