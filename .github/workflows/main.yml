@@ -15,10 +15,10 @@ env:
   IMAGE_BACK: ghcr.io/${{ github.repository_owner }}/tp_final_is3-back
   IMAGE_FRONT: ghcr.io/${{ github.repository_owner }}/tp_final_is3-front
 
+# =====================================================================
+# 1 TEST BACKEND
+# =====================================================================
 jobs:
-  # ---------------------------------------------------------------
-  # 1 TEST BACKEND
-  # ---------------------------------------------------------------
   test-back:
     runs-on: ubuntu-latest
     steps:
@@ -41,9 +41,9 @@ jobs:
           name: backend-coverage
           path: ventas-app/coverage.out
 
-  # ---------------------------------------------------------------
-  # 2 TEST FRONTEND
-  # ---------------------------------------------------------------
+# =====================================================================
+# 2 TEST FRONTEND
+# =====================================================================
   test-front:
     runs-on: ubuntu-latest
     steps:
@@ -73,58 +73,110 @@ jobs:
           CI: true
         run: npm test --if-present || echo "no tests"
 
-      - name: Build production check
+      - name: Production build check
         working-directory: ./ventas-frontend
         run: npm run build
 
-  # ---------------------------------------------------------------
-  # 3 CYPRESS E2E TESTS (frontend + backend levantados)
-  # ---------------------------------------------------------------
+# =====================================================================
+# 2.5 BUILD BACKEND (para Cypress)
+# =====================================================================
+  build-back:
+    runs-on: ubuntu-latest
+    needs: [test-back]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - name: Build backend
+        working-directory: ./ventas-app
+        run: go build -o backend-app ./cmd/main.go
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-artifact
+          path: ventas-app/backend-app
+
+# =====================================================================
+# 2.6 BUILD FRONTEND (para Cypress)
+# =====================================================================
+  build-front:
+    runs-on: ubuntu-latest
+    needs: [test-front]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        working-directory: ./ventas-frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: ./ventas-frontend
+        run: npm run build
+
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: ventas-frontend/dist
+
+# =====================================================================
+# 3 CYPRESS E2E TESTS (sobre app REAL ejecutando front+back)
+# =====================================================================
   e2e-tests:
     name: E2E Tests (Cypress)
-    needs: [test-back, test-front]
+    needs: [build-back, build-front]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      # ---------------- Backend temporal ----------------
-      - uses: actions/setup-go@v5
+      # Descargar artefactos buildiados
+      - uses: actions/download-artifact@v4
         with:
-          go-version: "1.22.x"
+          name: backend-artifact
+          path: backend/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend-dist/
+
+      # Start backend real (binario)
       - name: Start backend
-        working-directory: ./ventas-app
         run: |
-          nohup go run cmd/main.go > backend.log 2>&1 &
+          chmod +x backend/backend-app
+          nohup backend/backend-app > backend.log 2>&1 &
           sleep 5
 
-      # ---------------- Frontend temporal ----------------
+      # Start frontend real (dist)
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install frontend
-        working-directory: ./ventas-frontend
-        run: npm ci
-
-      - name: Start frontend preview
-        working-directory: ./ventas-frontend
+      - name: Serve frontend dist
         run: |
-          nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
+          npm install -g serve
+          nohup serve -s frontend-dist -l 5174 > frontend.log 2>&1 &
           sleep 5
 
-      # ---------------- Espera de servicios ----------------
-      - name: Wait for services
+      # Wait for both services
+      - name: Wait for backend & frontend
         run: npx wait-on http://localhost:5174 http://localhost:8080
 
-      # ---------------- Cypress ----------------
+      # Run Cypress
       - name: Run Cypress
         working-directory: ./ventas-frontend
         run: npm run cypress:ci
 
-  # ---------------------------------------------------------------
-  # 4 BUILD & PUSH QA
-  # ---------------------------------------------------------------
+# =====================================================================
+# 4 BUILD & PUSH QA
+# =====================================================================
   build-push-qa:
     name: Build & Push QA Images
     needs: [e2e-tests]
@@ -148,7 +200,7 @@ jobs:
           username: ${{ secrets.GHCR_USER }}
           password: ${{ secrets.GHCR_TOKEN }}
 
-      # Backend
+      # Backend QA
       - name: Build & Push Backend QA
         uses: docker/build-push-action@v6
         with:
@@ -160,7 +212,7 @@ jobs:
             ${{ env.IMAGE_BACK }}:${{ steps.vars.outputs.SHORT_SHA }}
             ${{ env.IMAGE_BACK }}:latest
 
-      # Frontend
+      # Frontend QA
       - name: Build & Push Frontend QA
         uses: docker/build-push-action@v6
         with:
@@ -173,9 +225,9 @@ jobs:
             ${{ env.IMAGE_FRONT }}:${{ steps.vars.outputs.SHORT_SHA }}
             ${{ env.IMAGE_FRONT }}:latest
 
-  # ---------------------------------------------------------------
-  # 5 DEPLOY QA
-  # ---------------------------------------------------------------
+# =====================================================================
+# 5 DEPLOY QA
+# =====================================================================
   deploy-qa:
     name: Deploy to QA
     needs: [build-push-qa]
@@ -189,9 +241,9 @@ jobs:
       - name: Deploy Frontend QA
         run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_QA_HOOK }}"
 
-  # ---------------------------------------------------------------
-  # 6 BUILD & PUSH PROD
-  # ---------------------------------------------------------------
+# =====================================================================
+# 6 BUILD & PUSH PROD
+# =====================================================================
   build-push-prod:
     name: Build & Push PROD Images
     needs: [e2e-tests]
@@ -239,9 +291,9 @@ jobs:
             ${{ env.IMAGE_FRONT }}:prod
             ${{ env.IMAGE_FRONT }}:prod-${{ steps.vars.outputs.SHORT_SHA }}
 
-  # ---------------------------------------------------------------
-  # 7 DEPLOY PROD
-  # ---------------------------------------------------------------
+# =====================================================================
+# 7 DEPLOY PROD
+# =====================================================================
   deploy-prod:
     name: Deploy to Production
     needs: [build-push-prod]
