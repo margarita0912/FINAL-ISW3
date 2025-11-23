@@ -5,7 +5,6 @@ import (
 	"log"
 	"ventas-app/models"
 
-	"github.com/joho/godotenv"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -13,7 +12,7 @@ import (
 var DBs = make(map[string]*gorm.DB)
 
 // ConnectAll carga las conexiones a QA y PROD desde los archivos .env.qa y .env.prod
-func ConnectAll() {
+/*func ConnectAll() {
 	// Cargar .env.qa
 	envQA, err := godotenv.Read(".env.qa")
 	if err != nil {
@@ -36,7 +35,7 @@ func ConnectAll() {
 			fmt.Println("❌", key, "no conectado")
 		}
 	}
-}
+} */
 
 func connectFromMap(env map[string]string) *gorm.DB {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",

@@ -16,7 +16,7 @@ func main() {
 	env := os.Getenv("APP_ENV")
 	config.LoadEnv("qa") // Carga inicial mínima para variables comunes
 
-	database.ConnectAll() // ← Carga ambas bases: qa y prod
+	database.Connect() // ← Carga ambas bases: qa y prod
 
 	r := gin.Default()
 	fmt.Println("Conexión establecida para QA y PROD", env)
