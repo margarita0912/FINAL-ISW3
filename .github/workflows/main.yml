@@ -6,11 +6,16 @@ on:
   pull_request:
 
 jobs:
+
+  # ----------------------------------------------------
+  # CHECK BASIC PIPELINE
+  # ----------------------------------------------------
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: echo "Pipeline OK"
+
 
   # ----------------------------------------------------
   # BUILD BACKEND
@@ -18,6 +23,7 @@ jobs:
   build_backend:
     runs-on: ubuntu-latest
     needs: check
+
     steps:
       - uses: actions/checkout@v4
 
@@ -34,12 +40,33 @@ jobs:
           name: backend-app
           path: backend-app
 
+
+  # ----------------------------------------------------
+  # TEST BACKEND (go test)
+  # ----------------------------------------------------
+  test_backend:
+    runs-on: ubuntu-latest
+    needs: build_backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run backend tests
+        working-directory: ./ventas-app
+        run: go test ./... -v
+
+
   # ----------------------------------------------------
   # BUILD FRONTEND
   # ----------------------------------------------------
   build_frontend:
     runs-on: ubuntu-latest
     needs: check
+
     steps:
       - uses: actions/checkout@v4
 
@@ -53,12 +80,35 @@ jobs:
       - run: npm run build
         working-directory: ./ventas-frontend
 
+
   # ----------------------------------------------------
-  # RUN E2E CYPRESS TESTS
+  # TEST FRONTEND (Jest)
+  # ----------------------------------------------------
+  test_frontend:
+    runs-on: ubuntu-latest
+    needs: build_frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm ci
+        working-directory: ./ventas-frontend
+
+      - name: Run Jest tests
+        working-directory: ./ventas-frontend
+        run: npm run test:ci
+
+
+  # ----------------------------------------------------
+  # CYPRESS E2E TESTS
   # ----------------------------------------------------
   e2e_tests:
     runs-on: ubuntu-latest
-    needs: [build_backend, build_frontend]
+    needs: [build_backend, build_frontend, test_backend, test_frontend]
 
     services:
       mysql:
@@ -75,13 +125,19 @@ jobs:
           --health-retries=5
 
     steps:
+
+      # --- CODE ---
       - uses: actions/checkout@v4
 
+      # --- BACKEND ARTIFACT ---
       - uses: actions/download-artifact@v4
         with:
           name: backend-app
           path: .
 
+      # ----------------------------------------------------
+      # CREATE ENV FILES (for CI)
+      # ----------------------------------------------------
       - name: Create .env files for CI
         run: |
           echo "DB_HOST=127.0.0.1" > .env.qa
@@ -90,14 +146,23 @@ jobs:
           echo "DB_PASS=rootpass" >> .env.qa
           echo "DB_NAME=ventas" >> .env.qa
           echo "DB_SSL_MODE=disable" >> .env.qa
+
           cp .env.qa .env.prod
 
+      # ----------------------------------------------------
+      # START BACKEND
+      # ----------------------------------------------------
       - name: Start backend
         run: |
           chmod +x backend-app
           nohup ./backend-app > backend.log 2>&1 &
           sleep 2
+          echo "--- BACKEND LOG ---"
+          tail -n 50 backend.log || true
 
+      # ----------------------------------------------------
+      # FRONTEND INSTALL + PREVIEW
+      # ----------------------------------------------------
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -105,28 +170,36 @@ jobs:
       - run: npm ci
         working-directory: ./ventas-frontend
 
-      # 👇 ESTA ES LA CLAVE
-      - name: Build frontend again for E2E
-        working-directory: ./ventas-frontend
-        run: npm run build
-
       - name: Start frontend preview
         working-directory: ./ventas-frontend
         run: |
-          nohup npm run preview -- --port 5174 > frontend.log 2>&1 &
+          nohup npm run preview -- --port 5174 --host 0.0.0.0 > frontend.log 2>&1 &
           sleep 2
+          echo "--- FRONTEND LOG ---"
+          tail -n 50 frontend.log || true
 
-      - name: Wait for backend & frontend
+      # ----------------------------------------------------
+      # WAIT FOR SERVICES
+      # ----------------------------------------------------
+      - name: Wait for backend and frontend
         run: |
           echo "Waiting for frontend (5174) AND backend (8080)..."
-          npx wait-on --http-get http://localhost:5174/ http://localhost:8080/productos --timeout 120000
+          npx wait-on --timeout 120000 http://localhost:5174/ http://localhost:8080/productos
 
-      - run: ss -ltnp || true
+      - run: |
+          echo "Listening ports:"
+          ss -ltnp || true
 
+      # ----------------------------------------------------
+      # RUN CYPRESS
+      # ----------------------------------------------------
       - name: Run Cypress
         working-directory: ./ventas-frontend
         run: npm run cypress:ci
 
+      # ----------------------------------------------------
+      # LOGS ON FAILURE
+      # ----------------------------------------------------
       - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v4
