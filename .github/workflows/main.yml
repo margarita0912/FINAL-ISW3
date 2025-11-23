@@ -222,7 +222,7 @@ jobs:
           context: ./ventas-app
           file: ./ventas-app/Dockerfile
           push: true
-          tags: ghcr.io/cotystrumia/tp_final_is3-app:release
+          tags: ghcr.io/cotystrumia/tp_final_is3-back:release 
 
       # ---- FRONTEND IMAGE (UNA SOLA BUILD)
       - name: Build & Push Frontend Image
@@ -231,9 +231,4 @@ jobs:
           context: ./ventas-frontend
           file: ./ventas-frontend/Dockerfile
           push: true
-          tags: |
-            ${{ env.IMAGE_FRONT }}:latest
-            ${{ env.IMAGE_FRONT }}:${{ steps.vars.outputs.SHORT_SHA }}
-            ${{ env.IMAGE_FRONT }}:qa
-            ${{ env.IMAGE_FRONT }}:prod
-
+          tags: ghcr.io/cotystrumia/tp_final_is3-front:release
