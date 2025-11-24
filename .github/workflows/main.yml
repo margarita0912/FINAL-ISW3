@@ -107,7 +107,7 @@ jobs:
  
 
   # ----------------------------------------------------
-  # CYPRESS E2E TESTS
+  # CYPRESS E2E TESTS (CORREGIDO Y ESTABLE)
   # ----------------------------------------------------
   e2e_tests:
     runs-on: ubuntu-latest
@@ -123,40 +123,37 @@ jobs:
           - "3306:3306"
         options: >-
           --health-cmd="mysqladmin ping --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=15
 
     steps:
       - uses: actions/checkout@v4
 
-      #############################
-      #  BACKEND BINARY
-      #############################
+      ###################################################
+      # BAJAR ARTIFACTS
+      ###################################################
       - uses: actions/download-artifact@v4
         with:
           name: backend-app
           path: .
 
-      #############################
-      #  FRONTEND DIST
-      #############################
       - uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: dist
 
-      #############################
-      #  INSTALL MYSQL CLIENT
-      #############################
+      ###################################################
+      # MYSQL CLIENT
+      ###################################################
       - name: Install MySQL client
         run: |
           sudo apt-get update
           sudo apt-get install -y default-mysql-client
 
-      #############################
-      #  SEED DATABASE
-      #############################
+      ###################################################
+      # ESPERAR MYSQL + SEED
+      ###################################################
       - name: Wait for MySQL and seed database
         run: |
           echo "Waiting for MySQL..."
@@ -164,59 +161,67 @@ jobs:
             mysql -h127.0.0.1 -uroot -prootpass -e "SELECT 1" && break
             sleep 2
           done
+
           echo "Importing seed SQL..."
-          mysql -h127.0.0.1 -uroot -prootpass ventas < db/ventas-app.sql || true
+          mysql -h127.0.0.1 -uroot -prootpass ventas < db/ventas-app.sql
 
-
-      #############################
-      #  START BACKEND (CON ENV!)
-      #############################
-      - name: Start Backend with ENV vars
+      ###################################################
+      # LEVANTAR BACKEND (CONFIG COMPLETA)
+      ###################################################
+      - name: Start Backend
+        env:
+          DB_HOST: "127.0.0.1"
+          DB_PORT: "3306"
+          DB_USER: "root"
+          DB_PASS: "rootpass"
+          DB_NAME: "ventas"
+          ENV: "ci"
+          DB_SSL_MODE: "disable"
+          JWT_SECRET: "testsecretci"
+          PORT: "8080"
         run: |
           chmod +x backend-app
-          echo "=== Starting backend with ENV ==="
-          DB_HOST=127.0.0.1 \
-          DB_PORT=3306 \
-          DB_USER=root \
-          DB_PASS=rootpass \
-          DB_NAME=ventas \
-          DB_SSL_MODE=disable \
+          echo "=== Starting backend ==="
           nohup ./backend-app > backend.log 2>&1 &
-          sleep 6
-          echo "=== Backend LOGS ==="
+          sleep 7
+          echo "=== Backend logs ==="
           tail -n 80 backend.log || true
 
-      #############################
-      #  START FRONTEND PREVIEW
-      #############################
-      - uses: actions/setup-node@v4
+      ###################################################
+      # SERVIR FRONTEND DIST (CON API URL FORZADA)
+      ###################################################
+      - name: Install Node for preview
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - run: npm ci
-        working-directory: ./ventas-frontend
-
-      - name: Start Vite Preview
+      - name: Serve frontend
         run: |
+          npm ci --prefix ventas-frontend
+          echo "Starting Vite Preview..."
           nohup npx vite preview --port 5174 --host 0.0.0.0 > frontend.log 2>&1 &
           sleep 5
           tail -n 80 frontend.log || true
 
-      #############################
-      #  WAIT FOR BOTH SERVICES
-      #############################
-      - name: Wait for backend and frontend
+      ###################################################
+      # WAIT-ON PARA AMBOS SERVICIOS
+      ###################################################
+      - name: Wait for backend & frontend
         run: |
-          echo "Waiting for backend and frontend..."
           npx wait-on http://localhost:8080/productos http://localhost:5174 --timeout 180000
 
-      #############################
-      #  CYPRESS
-      #############################
+      ###################################################
+      # CYPRESS
+      ###################################################
       - name: Run Cypress
         working-directory: ./ventas-frontend
+        env:
+          CYPRESS_BASE_URL: "http://localhost:5174"
         run: npm run cypress:ci
 
+      ###################################################
+      # LOGS EN CASO DE ERROR
+      ###################################################
       - name: Upload logs on fail
         if: failure()
         uses: actions/upload-artifact@v4
@@ -225,6 +230,7 @@ jobs:
           path: |
             backend.log
             frontend.log
+
 
 
   # ----------------------------------------------------
