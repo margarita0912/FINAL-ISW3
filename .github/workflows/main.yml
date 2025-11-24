@@ -290,10 +290,10 @@ jobs:
       name: qa
     steps:
       - name: Deploy Backend QA
-        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_QA_HOOK }}"
+        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_QA_HOOK }}?clear=true" || true
 
       - name: Deploy Frontend QA
-        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_QA_HOOK }}"
+        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_QA_HOOK }}?clear=true" || true
 
   # ----------------------------------------------------
   # APROBACIÓN MANUAL PARA PROD
@@ -306,7 +306,6 @@ jobs:
     environment:
       name: production
       url: https://tp8-front-prod-tn48.onrender.com
-      # 👆 ACA GitHub te pedirá la aprobación manual
     steps:
       - name: Waiting for manual approval...
         run: echo "Approved!"
@@ -322,6 +321,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Deploy Backend PROD
-        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_PROD_HOOK }}"
+        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_PROD_HOOK }}?clear=true" || true
       - name: Deploy Frontend PROD
-        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_PROD_HOOK }}"
+        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_PROD_HOOK }}?clear=true" || true
