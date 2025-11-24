@@ -5,7 +5,9 @@ describe('Flujos completos de ventas (E2E)', () => {
   const mockProductos = [
     { id: 1, nombre: 'Producto A', precio: 100, stock: 10 },
     { id: 2, nombre: 'Producto B', precio: 50,  stock: 5  },
-    { id: 3, nombre: 'Producto C', precio: 25,  stock: 0  }
+    { id: 3, nombre: 'Producto C', precio: 25,  stock: 8  },
+    { id: 4, nombre: 'Producto D', precio: 75,  stock: 3  },
+    { id: 5, nombre: 'Producto E', precio: 10,  stock: 2  }
   ]
 
   beforeEach(() => {
