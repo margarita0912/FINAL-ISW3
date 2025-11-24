@@ -14,9 +14,21 @@ import (
 func main() {
 	// Este valor ya no es necesario si usás GetDB por request
 	env := os.Getenv("APP_ENV")
-	config.LoadEnv("qa") // Carga inicial mínima para variables comunes
 
-	database.Connect() // ← Carga ambas bases: qa y prod
+	// Si es CI, forzamos entorno "ci"
+	if os.Getenv("CI") == "true" {
+		env = "ci"
+	}
+
+	if env == "" {
+		env = "qa" // fallback por defecto (Render QA)
+	}
+
+	fmt.Println("Iniciando backend en entorno:", env)
+
+	config.LoadEnv(env) // carga env.<app_env>
+
+	database.Connect() // <- conecta según env actual
 
 	r := gin.Default()
 	fmt.Println("Conexión establecida para QA y PROD", env)

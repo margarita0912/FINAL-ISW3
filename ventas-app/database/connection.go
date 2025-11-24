@@ -23,11 +23,10 @@ func Connect() *gorm.DB {
 	nombre := os.Getenv("DB_NAME")
 	sslMode := os.Getenv("DB_SSL_MODE")
 
-	// Configurar SSL para Aiven con skip-verify como fallback
+	// Configurar SSL para Aiven con skip-verify como fallback (solo QA/PROD)
 	err := configurarSSLAiven()
 	if err != nil {
 		log.Printf("Warning: No se pudo configurar SSL con certificado CA: %v", err)
-		// Configurar SSL con skip-verify como fallback para Aiven
 		err = configurarSSLAivenSimple()
 		if err != nil {
 			log.Printf("Warning: No se pudo configurar SSL simple: %v", err)
@@ -36,25 +35,32 @@ func Connect() *gorm.DB {
 
 	var db *gorm.DB
 
-	// Si se indica DB_SSL_MODE=disable, conectar sin TLS (útil para CI/local)
+	// CI/local → sin TLS
 	if sslMode == "disable" {
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
-			usuario, clave, host, port, nombre)
+		dsn := fmt.Sprintf(
+			"%s:%s@tcp(%s:%s)/%s?parseTime=true",
+			usuario, clave, host, port, nombre,
+		)
 		db, err = gorm.Open(gormMysql.Open(dsn), &gorm.Config{})
 		if err != nil {
 			log.Fatal("Error al conectar con MySQL (sin TLS):", err)
 		}
 	} else {
-		// Configuración DSN para Aiven MySQL con SSL
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&tls=custom",
-			usuario, clave, host, port, nombre)
+		// QA/PROD (Aiven con TLS)
+		dsn := fmt.Sprintf(
+			"%s:%s@tcp(%s:%s)/%s?parseTime=true&tls=custom",
+			usuario, clave, host, port, nombre,
+		)
 
 		db, err = gorm.Open(gormMysql.Open(dsn), &gorm.Config{})
 		if err != nil {
-			// Fallback: intentar con SSL básico si falla con certificado personalizado
 			log.Printf("Error con SSL personalizado, intentando SSL básico: %v", err)
-			dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&tls=skip-verify",
-				usuario, clave, host, port, nombre)
+
+			dsn = fmt.Sprintf(
+				"%s:%s@tcp(%s:%s)/%s?parseTime=true&tls=skip-verify",
+				usuario, clave, host, port, nombre,
+			)
+
 			db, err = gorm.Open(gormMysql.Open(dsn), &gorm.Config{})
 			if err != nil {
 				log.Fatal("Error al conectar con MySQL (Aiven):", err)
@@ -62,32 +68,44 @@ func Connect() *gorm.DB {
 		}
 	}
 
-	db.AutoMigrate(&models.Usuario{}, &models.Producto{}, &models.Compra{}, &models.Venta{})
+	// Migraciones comunes
+	db.AutoMigrate(
+		&models.Usuario{},
+		&models.Producto{},
+		&models.Compra{},
+		&models.Venta{},
+	)
+
+	// 🔥 REGISTRAR CONEXIÓN EN EL MAPA DBs
+	// SI ESTAMOS EN CI → usar clave "ci"
+	env := os.Getenv("APP_ENV")
+	if os.Getenv("CI") == "true" {
+		env = "ci"
+	}
+
+	DBs[env] = db // <-- esta línea hace que GetDB funcione perfecto en CI/QA/PROD
+
 	DB = db
 	return db
 }
 
 func configurarSSLAiven() error {
-	// Cargar certificado CA
 	caCertPath := "BaltimoreCyberTrustRoot.crt.pem"
 	caCert, err := os.ReadFile(caCertPath)
 	if err != nil {
 		return fmt.Errorf("error leyendo certificado CA: %v", err)
 	}
 
-	// Crear pool de certificados
 	caCertPool := x509.NewCertPool()
 	if !caCertPool.AppendCertsFromPEM(caCert) {
 		return fmt.Errorf("error agregando certificado CA al pool")
 	}
 
-	// Configurar TLS
 	tlsConfig := &tls.Config{
 		RootCAs:            caCertPool,
 		InsecureSkipVerify: false,
 	}
 
-	// Registrar configuración TLS personalizada
 	err = mysql.RegisterTLSConfig("custom", tlsConfig)
 	if err != nil {
 		return fmt.Errorf("error registrando configuración TLS: %v", err)
@@ -97,12 +115,10 @@ func configurarSSLAiven() error {
 }
 
 func configurarSSLAivenSimple() error {
-	// Configurar TLS con skip verify para Aiven (menos seguro pero funcional)
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
 	}
 
-	// Registrar configuración TLS personalizada
 	err := mysql.RegisterTLSConfig("custom", tlsConfig)
 	if err != nil {
 		return fmt.Errorf("error registrando configuración TLS simple: %v", err)
