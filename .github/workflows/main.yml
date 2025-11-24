@@ -105,6 +105,7 @@ jobs:
       - run: npm run test:ci
         working-directory: ./ventas-frontend
  
+        
   # ----------------------------------------------------
   # CYPRESS E2E TESTS
   # ----------------------------------------------------
@@ -129,7 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # BACKEND BINARIO
+      # BACKEND BINARY
       - uses: actions/download-artifact@v4
         with:
           name: backend-app
@@ -142,7 +143,7 @@ jobs:
           path: dist
 
       # -----------------------------------------
-      # ENV BACKEND PARA CYPRESS
+      # BACKEND ENVS
       # -----------------------------------------
       - name: Set backend envs for CI
         run: |
@@ -154,24 +155,7 @@ jobs:
           echo "DB_SSL_MODE=disable" >> $GITHUB_ENV
 
       # -----------------------------------------
-      # MYSQL + SEED
-      # -----------------------------------------
-      - name: Install MySQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y default-mysql-client
-
-      - name: Wait for MySQL and seed database
-        run: |
-          echo "Waiting for MySQL..."
-          for i in $(seq 1 30); do
-            mysql -h127.0.0.1 -uroot -prootpass -e 'SELECT 1' && break || sleep 2
-          done
-          echo "Importing seed..."
-          mysql -h127.0.0.1 -uroot -prootpass ventas < db/ventas-app.sql || true
-
-      # -----------------------------------------
-      # BACKEND
+      # START BACKEND
       # -----------------------------------------
       - name: Start backend
         run: |
@@ -181,14 +165,8 @@ jobs:
           tail -n 50 backend.log || true
 
       # -----------------------------------------
-      # FRONTEND ENV PARA CYPRESS  (✔️ FIX CLAVE)
-      # -----------------------------------------
-      - name: Create frontend env for Cypress
-        working-directory: ./ventas-frontend
-        run: echo "VITE_API_URL=http://localhost:8080" > .env
-
-      # -----------------------------------------
-      # FRONTEND PREVIEW
+      # FRONTEND PREVIEW USING dist/
+      # (versión ORIGINAL que funcionaba)
       # -----------------------------------------
       - uses: actions/setup-node@v4
         with:
@@ -197,20 +175,24 @@ jobs:
       - run: npm ci
         working-directory: ./ventas-frontend
 
-      - name: Start preview server using built dist
+      - name: Create .env for Cypress
         working-directory: ./ventas-frontend
         run: |
-          nohup npx vite preview --port 5174 --host 0.0.0.0 --outDir dist > ../frontend.log 2>&1 &
-          sleep 3
-          tail -n 80 ../frontend.log || true
+          echo "VITE_API_URL=http://localhost:8080" > .env
+
+      - name: Start preview server using built dist
+        run: |
+          nohup npx vite preview --port 5174 --host 0.0.0.0 --outDir dist > frontend.log 2>&1 &
+          sleep 5
+          tail -n 80 frontend.log || true
 
       # -----------------------------------------
-      # WAIT
+      # WAIT FRONTEND + BACKEND
       # -----------------------------------------
       - name: Wait for frontend and backend
         run: |
           echo "Waiting for services..."
-          npx wait-on http://localhost:5174 http://localhost:8080 --timeout 180000
+          npx wait-on http-get://localhost:5174 http-get://localhost:8080 --timeout 180000
 
       # -----------------------------------------
       # CYPRESS
@@ -227,7 +209,6 @@ jobs:
           path: |
             backend.log
             frontend.log
-
 
 
   # ----------------------------------------------------
