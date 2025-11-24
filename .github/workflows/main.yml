@@ -142,7 +142,6 @@ jobs:
         with:
           name: frontend-dist
           path: dist
-
       ###################################################
       # MYSQL CLIENT
       ###################################################
@@ -163,7 +162,7 @@ jobs:
           done
 
           echo "Importing seed SQL..."
-          mysql -h127.0.0.1 -uroot -prootpass ventas < db/ventas-app.sql
+          mysql -h127.0.0.1 -uroot -prootpass ventas < db/ventas-app.sql || true
 
       ###################################################
       # LEVANTAR BACKEND (CONFIG COMPLETA)
@@ -188,21 +187,21 @@ jobs:
           echo "=== Backend logs ==="
           tail -n 80 backend.log || true
 
-            ###################################################
-            # SERVIR FRONTEND DIST (CON API URL FORZADA)
-            ###################################################
-            - name: Install Node for preview
-              uses: actions/setup-node@v4
-              with:
-                node-version: "20"
+      ###################################################
+      # SERVIR FRONTEND DIST (CON API URL FORZADA)
+      ###################################################
+      - name: Install Node for preview
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-            - name: Serve frontend
-              run: |
-                npm ci --prefix ventas-frontend
-                echo "Starting Vite Preview..."
-                nohup npx vite preview --port 5174 --host 0.0.0.0 > frontend.log 2>&1 &
-                sleep 5
-                tail -n 80 frontend.log || true
+      - name: Serve frontend
+        run: |
+          npm ci --prefix ventas-frontend
+          echo "Starting Vite Preview..."
+          nohup npx vite preview --port 5174 --host 0.0.0.0 > frontend.log 2>&1 &
+          sleep 5
+          tail -n 80 frontend.log || true
 
       ###################################################
       # WAIT-ON PARA AMBOS SERVICIOS
