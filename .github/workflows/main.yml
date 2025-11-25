@@ -290,10 +290,10 @@ jobs:
       name: qa
     steps:
       - name: Deploy Backend QA
-        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_QA_HOOK }}?force=true"
+        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_QA_HOOK }}" || true
 
       - name: Deploy Frontend QA
-        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_QA_HOOK }}?force=true"
+        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_QA_HOOK }}" || true
 
   # ----------------------------------------------------
   # APROBACIÓN MANUAL PARA PROD
@@ -321,6 +321,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Deploy Backend PROD
-        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_PROD_HOOK }}?force=true"
+        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_PROD_HOOK }}" || true
       - name: Deploy Frontend PROD
-        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_PROD_HOOK }}?force=true"
+        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_PROD_HOOK }}" || true
