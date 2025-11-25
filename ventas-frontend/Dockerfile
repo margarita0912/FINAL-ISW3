@@ -1,26 +1,16 @@
-# -------- STAGE 1: Build --------
-FROM node:20 AS builder
+FROM node:20-slim
 
 WORKDIR /app
-COPY package*.json ./
+
+COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
 
-# ⬅️ AGREGAR ESTO
-ARG VITE_API_URL
-ENV VITE_API_URL=$VITE_API_URL
-
+# ⬅️ EL BUILD SE HACE AQUÍ, DENTRO DE RENDER
 RUN npm run build
 
-
-# -------- STAGE 2: Serve --------
-FROM node:20-slim
-WORKDIR /app
-
 RUN npm install -g serve
-
-COPY --from=builder /app/dist ./dist
 
 EXPOSE 3000
 CMD ["serve", "-s", "dist", "-l", "3000"]
