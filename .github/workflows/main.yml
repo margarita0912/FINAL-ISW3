@@ -36,6 +36,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+
       - name: Run backend tests
         working-directory: ./ventas-app
         run: go test ./... -v
@@ -63,7 +64,26 @@ jobs:
           path: backend-app
 
   # ----------------------------------------------------
-  # BUILD FRONTEND
+  # TEST FRONTEND
+  # ----------------------------------------------------
+  test_frontend:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm ci
+        working-directory: ./ventas-frontend
+
+      - run: npm run test:ci
+        working-directory: ./ventas-frontend
+
+  # ----------------------------------------------------
+  # BUILD FRONTEND (CON INYECCIÓN DE API_URL)
   # ----------------------------------------------------
   build_frontend:
     runs-on: ubuntu-latest
@@ -75,7 +95,6 @@ jobs:
         with:
           node-version: "20"
 
-      # ⬅️ INYECTA LA URL ANTES DEL BUILD
       - name: Inject API URL (QA or PROD)
         working-directory: ./ventas-frontend
         run: |
@@ -102,27 +121,7 @@ jobs:
           path: ventas-frontend/dist
 
   # ----------------------------------------------------
-  # TEST FRONTEND
-  # ----------------------------------------------------
-  test_frontend:
-    runs-on: ubuntu-latest
-    needs: check
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - run: npm ci
-        working-directory: ./ventas-frontend
-
-      - run: npm run test:ci
-        working-directory: ./ventas-frontend
- 
-
-  # ----------------------------------------------------
-  # CYPRESS E2E TESTS (CORREGIDO Y ESTABLE)
+  # CYPRESS E2E
   # ----------------------------------------------------
   e2e_tests:
     runs-on: ubuntu-latest
@@ -145,9 +144,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      ###################################################
-      # DOWNLOAD ARTIFACTS
-      ###################################################
       - uses: actions/download-artifact@v4
         with:
           name: backend-app
@@ -158,17 +154,11 @@ jobs:
           name: frontend-dist
           path: dist
 
-      ###################################################
-      # MYSQL CLIENT
-      ###################################################
       - name: Install MySQL client
         run: |
           sudo apt-get update
           sudo apt-get install -y default-mysql-client
 
-      ###################################################
-      # WAIT FOR MYSQL + (OPTIONAL) SEED
-      ###################################################
       - name: Wait for MySQL and seed database
         run: |
           echo "Waiting for MySQL..."
@@ -177,12 +167,8 @@ jobs:
             sleep 2
           done
 
-          echo "Importing seed SQL..."
           mysql -h127.0.0.1 -uroot -prootpass ventas < db/ventas-app.sql || true
 
-      ###################################################
-      # START BACKEND
-      ###################################################
       - name: Start Backend
         env:
           CI: "true"
@@ -197,15 +183,10 @@ jobs:
           PORT: "8080"
         run: |
           chmod +x backend-app
-          echo "=== Starting backend ==="
           nohup ./backend-app > backend.log 2>&1 &
           sleep 7
-          echo "=== Backend logs ==="
-          tail -n 80 backend.log || true
+          tail backend.log || true
 
-      ###################################################
-      # START FRONTEND PREVIEW
-      ###################################################
       - name: Install Node for preview
         uses: actions/setup-node@v4
         with:
@@ -214,22 +195,14 @@ jobs:
       - name: Serve frontend
         run: |
           npm ci --prefix ventas-frontend
-          echo "Starting Vite dev server on port 5173..."
-          # Start Vite dev server in background (CI) so Cypress can visit the app
           nohup npm --prefix ventas-frontend run dev -- --port 5173 --host 0.0.0.0 > frontend.log 2>&1 &
           sleep 5
-          tail -n 80 frontend.log || true
+          tail frontend.log || true
 
-      ###################################################
-      # WAIT-ON FOR BACKEND & FRONTEND
-      ###################################################
       - name: Wait for backend & frontend
         run: |
           npx wait-on http://localhost:8080/productos http://localhost:5173 --timeout 180000
 
-      ###################################################
-      # CYPRESS
-      ###################################################
       - name: Run Cypress
         working-directory: ./ventas-frontend
         env:
@@ -237,21 +210,8 @@ jobs:
           CYPRESS_CI: "true"
         run: npm run cypress:ci
 
-      ###################################################
-      # UPLOAD LOGS ON FAIL
-      ###################################################
-      - name: Upload logs on fail
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-logs
-          path: |
-            backend.log
-            frontend.log
-
-
   # ----------------------------------------------------
-  # BUILD & PUSH IMAGES (UNA SOLA VEZ)
+  # BUILD & PUSH DOCKER IMAGES
   # ----------------------------------------------------
   build_and_push_images:
     runs-on: ubuntu-latest
@@ -263,9 +223,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set short SHA
-        id: vars
-        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: ventas-frontend/dist
 
       - uses: docker/setup-buildx-action@v3
 
@@ -275,7 +236,6 @@ jobs:
           username: ${{ secrets.GHCR_USER }}
           password: ${{ secrets.GHCR_PAT }}
 
-      # ---- BACKEND IMAGE (UNA SOLA BUILD)
       - name: Build & Push Backend Image
         uses: docker/build-push-action@v6
         with:
@@ -284,7 +244,6 @@ jobs:
           push: true
           tags: ghcr.io/cotystrumia/tp_final_is3-back:release 
 
-      # ---- FRONTEND IMAGE (QA/Prod) ----
       - name: Build & Push Frontend Image
         uses: docker/build-push-action@v6
         with:
@@ -292,18 +251,14 @@ jobs:
           file: ./ventas-frontend/Dockerfile
           push: true
           tags: ghcr.io/cotystrumia/tp_final_is3-front:release
-         
 
   # ----------------------------------------------------
-  # DEPLOY QA (AUTOMÁTICO)
+  # DEPLOY QA
   # ----------------------------------------------------
   deploy_qa:
-    name: Deploy to QA
     runs-on: ubuntu-latest
     needs: build_and_push_images
     if: github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/main'
-    environment:
-      name: qa
     steps:
       - name: Deploy Backend QA
         run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_QA_HOOK }}" || true
@@ -312,10 +267,9 @@ jobs:
         run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_QA_HOOK }}" || true
 
   # ----------------------------------------------------
-  # APROBACIÓN MANUAL PARA PROD
+  # APROBACIÓN PARA PROD
   # ----------------------------------------------------
   approve_prod:
-    name: Approve production deployment
     runs-on: ubuntu-latest
     needs: build_and_push_images
     if: github.ref == 'refs/heads/main'
@@ -323,20 +277,18 @@ jobs:
       name: production
       url: https://tp8-front-prod-tn48.onrender.com
     steps:
-      - name: Waiting for manual approval...
-        run: echo "Approved!"
-
+      - run: echo "Esperando aprobación manual..."
 
   # ----------------------------------------------------
-  # DEPLOY PROD (DESPUÉS DE APROBACIÓN)
+  # DEPLOY PROD
   # ----------------------------------------------------
   deploy_prod:
-    name: Deploy to Production
     runs-on: ubuntu-latest
     needs: approve_prod
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Deploy Backend PROD
         run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_PROD_HOOK }}" || true
+
       - name: Deploy Frontend PROD
         run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_PROD_HOOK }}" || true
