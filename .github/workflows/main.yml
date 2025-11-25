@@ -75,11 +75,26 @@ jobs:
         with:
           node-version: "20"
 
-      - run: npm ci
+      # ⬅️ INYECTA LA URL ANTES DEL BUILD
+      - name: Inject API URL (QA or PROD)
         working-directory: ./ventas-frontend
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/qa" ]]; then
+            echo "VITE_API_URL=${{ secrets.VITE_API_URL_QA }}" >> .env
+          else
+            echo "VITE_API_URL=${{ secrets.VITE_API_URL_PROD }}" >> .env
+          fi
 
-      - run: npm run build
+          echo "Usando API URL:"
+          cat .env
+
+      - name: Install deps
         working-directory: ./ventas-frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: ./ventas-frontend
+        run: npm run build
 
       - uses: actions/upload-artifact@v4
         with:
