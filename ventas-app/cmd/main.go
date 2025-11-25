@@ -13,54 +13,65 @@ import (
 
 func main() {
 
-	// Detectar entorno
+	// ===========================
+	// 🔍 DETECTAR ENTORNO
+	// ===========================
 	env := os.Getenv("APP_ENV")
 
-	// Si es CI → forzar entorno de pruebas
 	if os.Getenv("CI") == "true" {
 		env = "ci"
 	}
 
-	// Si no viene nada, asumimos QA (Render QA)
 	if env == "" {
 		env = "qa"
 	}
 
 	fmt.Println("Iniciando backend en entorno:", env)
 
-	// Cargar variables según entorno
+	// ===========================
+	// 🔧 CARGA DE CONFIG POR ENTORNO
+	// ===========================
 	config.LoadEnv(env)
-
-	// Conectar BD
 	database.Connect()
 
-	// Iniciar servidor
 	r := gin.Default()
+	fmt.Println("Conexión establecida para entorno:", env)
 
-	fmt.Println("Conexión establecida para:", env)
+	// ===========================
+	// 🔥 CORS DINÁMICO POR ENTORNO
+	// ===========================
+	allowedOrigins := []string{
+		"http://localhost:5173",
+		"http://localhost:5174",
+	}
 
-	// ================
-	//   🔥 CORS FIX
-	// ================
-	r.Use(cors.New(cors.Config{
-		AllowOrigins: []string{
-			// FRONT LOCALES (para Vite y Cypress)
-			"http://localhost:5173",
-			"http://localhost:5174",
-
-			// FRONT QA y PROD (Render)
+	// Agregar los orígenes según entorno
+	switch env {
+	case "qa":
+		allowedOrigins = append(allowedOrigins,
 			"https://frontqa-t0a9.onrender.com",
-			"https://frontprod-uu5g.onrender.com",
-		},
+		)
+	case "prod":
+		allowedOrigins = append(allowedOrigins,
+			"https://frontprod-tn48.onrender.com", // <-- DOMINIO REAL DE PROD
+		)
+	}
+
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     allowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
 
-	// Rutas
+	// ===========================
+	// 🔀 Rutas
+	// ===========================
 	routes.Setup(r)
 
-	// Puerto fijo (Render usa ese puerto)
+	// ===========================
+	// 🚀 Ejecutar servidor
+	// ===========================
 	r.Run(":8080")
 }
