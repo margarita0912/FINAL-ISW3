@@ -202,7 +202,7 @@ jobs:
 
 
   # ----------------------------------------------------
-  # BUILD & PUSH DOCKER IMAGES (UNA SOLA IMAGEN)
+  # BUILD & PUSH DOCKER IMAGE (CORRECTO: QA O PROD)
   # ----------------------------------------------------
   build_and_push_images:
     runs-on: ubuntu-latest
@@ -220,39 +220,24 @@ jobs:
           username: ${{ secrets.GHCR_USER }}
           password: ${{ secrets.GHCR_PAT }}
 
-      # ⭐⭐⭐ AQUI VIENE LO IMPORTANTE: COPIAMOS EL CONFIG QA O PROD ⭐⭐⭐
-      - name: Inject config.json (QA or PROD)
-        working-directory: ./ventas-frontend
+      # 💥 AQUÍ SE COPIA EL CONFIG CORRECTO
+      - name: Inject correct config.json (QA or PROD)
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/qa" ]]; then
-            echo "Usando config.qa.json"
+          cd ventas-frontend
+          BRANCH="${GITHUB_REF##*/}"
+
+          if [[ "$BRANCH" == "qa" ]]; then
+            echo "Usando config.qa.json → public/config.json"
             cp config.qa.json public/config.json
           else
-            echo "Usando config.prod.json"
+            echo "Usando config.prod.json → public/config.json"
             cp config.prod.json public/config.json
           fi
 
-          echo "Contenido final de config.json:"
+          echo "Contenido final del config.json:"
           cat public/config.json
 
-      # ⭐ Luego hacemos el build definitivo que irá al DOCKER ⭐
-      - name: Build frontend final
-        working-directory: ./ventas-frontend
-        run: |
-          npm ci
-          npm run build
-
-      # ----------- Backend Image ----------
-      - name: Build & Push Backend Image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./ventas-app
-          file: ./ventas-app/Dockerfile
-          push: true
-          tags: ghcr.io/cotystrumia/tp_final_is3-back:release
-
-      # ----------- Frontend Image ----------
-      - name: Build & Push Frontend Image (ONE IMAGE)
+      - name: Build & Push Frontend Image
         uses: docker/build-push-action@v6
         with:
           context: ./ventas-frontend
@@ -260,6 +245,13 @@ jobs:
           push: true
           tags: ghcr.io/cotystrumia/tp_final_is3-front:release
 
+      - name: Build & Push Backend Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ventas-app
+          file: ./ventas-app/Dockerfile
+          push: true
+          tags: ghcr.io/cotystrumia/tp_final_is3-back:release
 
   # ----------------------------------------------------
   # DEPLOY QA (USA MISMA IMAGEN)
