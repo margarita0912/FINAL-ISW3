@@ -34,9 +34,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - name: Run backend tests
+
+      - name: Run backend tests with coverage
         working-directory: ./ventas-app
-        run: go test ./... -v
+        run: go test ./... -v -coverprofile=coverage.out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: ventas-app/coverage.out
 
   # ----------------------------------------------------
   # BUILD BACKEND (BINARIO PARA CYPRESS)
@@ -74,12 +80,14 @@ jobs:
       - run: npm ci
         working-directory: ./ventas-frontend
 
-      - name: Clean compiled JS files before tests
+      - name: Run frontend unit tests with coverage
         working-directory: ./ventas-frontend
-        run: find src -name "*.js" -type f -delete || true
+        run: npm run test:ci -- --coverage
 
-      - run: npm run test:ci
-        working-directory: ./ventas-frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: js-coverage
+          path: ventas-frontend/coverage/lcov.info
 
   # ----------------------------------------------------
   # BUILD FRONTEND (CYPRESS PREVIEW)
@@ -202,7 +210,7 @@ jobs:
   # ----------------------------------------------------
   sonarcloud:
     name: SonarCloud Analysis
-    needs: [build_backend, build_frontend]
+    needs: [test_backend, test_frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -210,13 +218,13 @@ jobs:
           fetch-depth: 0
 
       - name: Download Go coverage
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: go-coverage
           path: ventas-app
 
       - name: Download JS coverage
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: js-coverage
           path: ventas-frontend/coverage
