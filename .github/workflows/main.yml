@@ -80,15 +80,13 @@ jobs:
       - run: npm ci
         working-directory: ./ventas-frontend
 
-      - name: Run frontend unit tests with coverage
+      - name: Clean compiled JS files before tests
         working-directory: ./ventas-frontend
-        run: npm run test:ci -- --coverage
+        run: find src -name "*.js" -type f -delete || true
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: js-coverage
-          path: ventas-frontend/coverage/lcov.info
-
+      - run: npm run test:ci
+        working-directory: ./ventas-frontend
+        
   # ----------------------------------------------------
   # BUILD FRONTEND (CYPRESS PREVIEW)
   # ----------------------------------------------------
