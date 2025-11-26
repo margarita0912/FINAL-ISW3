@@ -25,8 +25,7 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Instalar servidor para el frontend
-RUN npm install -g serve
+# Ya no instalamos 'serve': el backend sirve el frontend estático
 
 # Copiar backend
 COPY --from=backend_builder /app/backend-app ./backend-app
@@ -34,11 +33,11 @@ COPY --from=backend_builder /app/backend-app ./backend-app
 # Copiar frontend build
 COPY --from=frontend_builder /app/ventas-frontend/dist ./dist
 
-# Script para iniciar ambos servicios
+# Script para iniciar el backend (que también sirve el frontend)
 COPY start.sh ./start.sh
 RUN chmod +x start.sh
 
-EXPOSE 3000
+# Render expone un solo puerto (PORT). El backend lo leerá y escuchará ahí.
 EXPOSE 8080
 
 CMD ["./start.sh"]

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"ventas-app/config"
 	"ventas-app/database"
 	"ventas-app/routes"
@@ -61,9 +62,23 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Registrar rutas
+	// Registrar rutas de API
 	routes.Setup(r)
 
-	// Puerto de Render
-	r.Run(":8080")
+	// Servir frontend estático desde ./dist si existe
+	// Esto permite que un único servicio de Render atienda frontend y backend.
+	distPath := filepath.Join(".", "dist")
+	r.Static("/assets", filepath.Join(distPath, "assets"))
+	// Rutas no manejadas por la API → devolver index.html (SPA fallback)
+	r.NoRoute(func(c *gin.Context) {
+		c.File(filepath.Join(distPath, "index.html"))
+	})
+
+	// Puerto: usar PORT de Render si está definido, si no 8080
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	r.Run(":" + port)
 }

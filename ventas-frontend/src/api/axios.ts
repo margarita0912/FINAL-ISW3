@@ -8,7 +8,11 @@ async function loadConfigJson() {
   try {
     const res = await fetch("/config.json", { cache: "no-store" });
     const json = await res.json();
-    return json.api_url || null;
+    // Permitir string vacío "" para usar base relativa en producción
+    if (Object.prototype.hasOwnProperty.call(json, "api_url")) {
+      return json.api_url as string;
+    }
+    return null;
   } catch (err) {
     console.warn("No se pudo cargar config.json, usando fallback.");
     return null;
@@ -20,10 +24,14 @@ async function init() {
   if (apiInstance) return; // ya inicializado
 
   const runtimeURL = await loadConfigJson();
-  const finalURL =
-    runtimeURL ||
-    import.meta.env.VITE_API_URL ||
-    "http://localhost:8080";
+  let finalURL: string | undefined;
+  if (runtimeURL !== null && runtimeURL !== undefined) {
+    finalURL = runtimeURL; // puede ser "" (base relativa)
+  } else if (typeof import.meta.env.VITE_API_URL !== "undefined") {
+    finalURL = import.meta.env.VITE_API_URL as string; // puede ser ""
+  } else {
+    finalURL = "http://localhost:8080";
+  }
 
   console.log("API URL usada:", finalURL);
 

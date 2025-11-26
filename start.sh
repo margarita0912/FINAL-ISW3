@@ -1,7 +1,4 @@
 #!/bin/sh
 
-# Iniciar backend en background
-./backend-app &
-
-# Iniciar frontend
-serve -s dist -l 3000
+# El backend ahora sirve también el frontend (./dist) y escucha en $PORT (Render)
+exec ./backend-app
