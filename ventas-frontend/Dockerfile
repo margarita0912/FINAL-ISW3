@@ -3,14 +3,14 @@ FROM node:20 AS builder
 
 WORKDIR /app
 
-# Instalamos dependencias con cache correcto
+# Instalamos dependencias con caché correcto
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copiamos el resto del proyecto (incluye public/config.json)
+# Copiamos el resto del proyecto
 COPY . .
 
-# Build del frontend (con config.json ya inyectado por GH Actions)
+# Build del frontend
 RUN npm run build
 
 # ---------- STAGE 2: Static Server ----------
@@ -18,11 +18,14 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Instalamos servidor estático
+# Servidor estático
 RUN npm install -g serve
 
-# Copiamos la carpeta dist final
+# Copiamos build
 COPY --from=builder /app/dist ./dist
+
+# Copiamos archivo config.json (el que se sobrescribe en runtime)
+COPY public/config.json ./dist/config.json
 
 EXPOSE 3000
 

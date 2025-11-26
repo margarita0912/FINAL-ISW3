@@ -11,8 +11,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_BACK: ghcr.io/cotystrumia/tp_final_is3-back
-  IMAGE_FRONT: ghcr.io/cotystrumia/tp_final_is3-front
+  IMAGE_UNIFIED: ghcr.io/cotystrumia/tp_final_is3
 
 jobs:
 
@@ -40,7 +39,7 @@ jobs:
         run: go test ./... -v
 
   # ----------------------------------------------------
-  # BUILD BACKEND
+  # BUILD BACKEND (BINARIO PARA CYPRESS)
   # ----------------------------------------------------
   build_backend:
     runs-on: ubuntu-latest
@@ -90,13 +89,11 @@ jobs:
         with:
           node-version: "20"
 
-      # Solo para Cypress (esto NO es el build final)
+      # Solo para Cypress
       - name: Inject QA API (for Cypress)
         working-directory: ./ventas-frontend
         run: |
           echo "VITE_API_URL=${{ secrets.VITE_API_URL_QA }}" >> .env
-          echo "Usando API QA para Cypress preview:"
-          cat .env
 
       - name: Install deps
         working-directory: ./ventas-frontend
@@ -174,8 +171,6 @@ jobs:
         run: |
           chmod +x backend-app
           nohup ./backend-app > backend.log 2>&1 &
-          sleep 7
-          tail backend.log || true
 
       - name: Install Node for preview
         uses: actions/setup-node@v4
@@ -186,8 +181,6 @@ jobs:
         run: |
           npm ci --prefix ventas-frontend
           nohup npm --prefix ventas-frontend run dev -- --port 5173 --host 0.0.0.0 > frontend.log 2>&1 &
-          sleep 5
-          tail frontend.log || true
 
       - name: Wait for backend & frontend
         run: |
@@ -200,11 +193,10 @@ jobs:
           CYPRESS_CI: "true"
         run: npm run cypress:ci
 
-
   # ----------------------------------------------------
-  # BUILD & PUSH DOCKER IMAGE (CORRECTO: QA O PROD)
+  # BUILD & PUSH UNIFIED IMAGE (FRONT + BACK)
   # ----------------------------------------------------
-  build_and_push_images:
+  build_unified_image:
     runs-on: ubuntu-latest
     needs: [e2e_tests]
     permissions:
@@ -220,62 +212,34 @@ jobs:
           username: ${{ secrets.GHCR_USER }}
           password: ${{ secrets.GHCR_PAT }}
 
-      # 💥 AQUÍ SE COPIA EL CONFIG CORRECTO
-      - name: Inject correct config.json (QA or PROD)
-        run: |
-          cd ventas-frontend
-          BRANCH="${GITHUB_REF##*/}"
-
-          if [[ "$BRANCH" == "qa" ]]; then
-            echo "Usando config.qa.json → public/config.json"
-            cp config.qa.json public/config.json
-          else
-            echo "Usando config.prod.json → public/config.json"
-            cp config.prod.json public/config.json
-          fi
-
-          echo "Contenido final del config.json:"
-          cat public/config.json
-
-      - name: Build & Push Frontend Image
+      - name: Build & Push unified image
         uses: docker/build-push-action@v6
         with:
-          context: ./ventas-frontend
-          file: ./ventas-frontend/Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
-          tags: ghcr.io/cotystrumia/tp_final_is3-front:release
-
-      - name: Build & Push Backend Image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./ventas-app
-          file: ./ventas-app/Dockerfile
-          push: true
-          tags: ghcr.io/cotystrumia/tp_final_is3-back:release
+          tags: ${{ env.IMAGE_UNIFIED }}:release
 
   # ----------------------------------------------------
-  # DEPLOY QA (USA MISMA IMAGEN)
+  # DEPLOY QA
   # ----------------------------------------------------
   deploy_qa:
     runs-on: ubuntu-latest
-    needs: build_and_push_images
+    needs: build_unified_image
+    if: github.ref == 'refs/heads/qa'
     steps:
-      - name: Deploy Backend QA
-        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_QA_HOOK }}" || true
-
-      - name: Deploy Frontend QA
-        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_QA_HOOK }}" || true
+      - name: Deploy QA unified app
+        run: curl -fsSL -X POST "${{ secrets.RENDER_QA_HOOK }}" || true
 
   # ----------------------------------------------------
   # APROBACIÓN PARA PROD
   # ----------------------------------------------------
   approve_prod:
     runs-on: ubuntu-latest
-    needs: build_and_push_images
+    needs: build_unified_image
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: https://tp8-front-prod-tn48.onrender.com
     steps:
       - run: echo "Esperando aprobación manual..."
 
@@ -286,8 +250,5 @@ jobs:
     runs-on: ubuntu-latest
     needs: approve_prod
     steps:
-      - name: Deploy Backend PROD
-        run: curl -fsSL -X POST "${{ secrets.RENDER_BACK_PROD_HOOK }}" || true
-
-      - name: Deploy Frontend PROD
-        run: curl -fsSL -X POST "${{ secrets.RENDER_FRONT_PROD_HOOK }}" || true
+      - name: Deploy PROD unified app
+        run: curl -fsSL -X POST "${{ secrets.RENDER_PROD_HOOK }}" || true
