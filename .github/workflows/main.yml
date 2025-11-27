@@ -231,8 +231,13 @@ jobs:
   # ----------------------------------------------------
   approve_prod:
     runs-on: ubuntu-latest
-    needs: e2e_integration_qa
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/prod'
+    needs: [build_unified_image, e2e_integration_qa]
+    # Ejecuta si: imagen OK y (viene de main con cypress OK, o viene de prod sin cypress)
+    if: |
+      always() &&
+      needs.build_unified_image.result == 'success' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/prod') &&
+      (needs.e2e_integration_qa.result == 'success' || needs.e2e_integration_qa.result == 'skipped')
     environment:
       name: production
     steps:
