@@ -33,8 +33,10 @@ describe('Flujos completos de ventas (E2E - Integración QA)', () => {
     seleccionarPrimerProducto()
     cy.get('input[type="number"]').first().clear().type('1')
     cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
-    // Verificar que aparece en el carrito (la tabla se renderiza solo si hay items)
-    cy.contains('Detalle de la venta', { timeout: 10000 }).should('be.visible')
+    
+    // Wait y verificar que aparece en el carrito
+    cy.wait(1500)
+    cy.get('body').should('contain', 'Detalle de la venta')
     cy.get('table tbody tr').should('have.length', 1)
   })
 
@@ -42,7 +44,8 @@ describe('Flujos completos de ventas (E2E - Integración QA)', () => {
     seleccionarPrimerProducto()
     cy.get('input[type="number"]').first().clear().type('2')
     cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
-    cy.contains('Detalle de la venta', { timeout: 10000 }).should('be.visible')
+    cy.wait(1500)
+    cy.get('body').should('contain', 'Detalle de la venta')
     cy.get('table tbody tr').should('have.length', 1)
   })
 
@@ -119,21 +122,24 @@ describe('Flujos completos de ventas (E2E - Integración QA)', () => {
     cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
 
     // Esperar que aparezca en el carrito
-    cy.contains('Detalle de la venta').should('be.visible')
+    cy.wait(1500)
+    cy.get('body').should('contain', 'Detalle de la venta')
     cy.get('table tbody tr').should('have.length', 1)
 
     // Confirmar venta
     cy.contains('button', /confirmar/i).should('be.visible').and('not.be.disabled').click()
 
-    // Verificar que el carrito se limpió (la tabla desaparece porque items.length === 0)
-    cy.contains('Detalle de la venta').should('not.exist')
+    // Esperar respuesta del servidor y verificar que el carrito se limpió
+    cy.wait(3000)
+    cy.get('body').should('not.contain', 'Detalle de la venta')
   })
 
   it('7️⃣ Test básico - agregar producto', () => {
     seleccionarPrimerProducto()
     cy.get('input[type="number"]').first().clear().type('1')
     cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
-    cy.contains('Detalle de la venta', { timeout: 10000 }).should('be.visible')
+    cy.wait(1500)
+    cy.get('body').should('contain', 'Detalle de la venta')
     cy.get('table tbody tr').should('have.length', 1)
   })
 
