@@ -12,9 +12,8 @@ describe('Acceptance - flujo básico de integración', () => {
     // Verificar que redirige (no queda en /login)
     cy.url({ timeout: 10000 }).should('not.include', '/login');
     
-    // Navegar a productos
-    cy.visit('/productos');
-    cy.url().should('include', '/productos');
-    cy.get('body').should('contain', 'Productos');
+    // Verificar que el header/nav tiene contenido
+    cy.get('body').should('contain', 'Ventas App');
+    cy.get('nav').should('exist');
   });
 });

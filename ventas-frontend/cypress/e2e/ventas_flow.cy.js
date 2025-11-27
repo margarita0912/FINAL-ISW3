@@ -32,17 +32,18 @@ describe('Flujos completos de ventas (E2E - Integración QA)', () => {
   it('1️⃣ SIMPLE - Crear venta básica', () => {
     seleccionarPrimerProducto()
     cy.get('input[type="number"]').first().clear().type('1')
-    cy.contains('Agregar al carrito').click()
-    // Verificar que aparece en el carrito (cualquier producto)
-    cy.get('table').should('exist')
-    cy.get('table tbody tr').should('have.length.at.least', 1)
+    cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
+    // Verificar que aparece en el carrito (la tabla se renderiza solo si hay items)
+    cy.contains('Detalle de la venta', { timeout: 10000 }).should('be.visible')
+    cy.get('table tbody tr').should('have.length', 1)
   })
 
   it('🧪 Test alternativo - cantidad 2', () => {
     seleccionarPrimerProducto()
     cy.get('input[type="number"]').first().clear().type('2')
-    cy.contains('Agregar al carrito').click()
-    cy.get('table tbody tr').should('have.length.at.least', 1)
+    cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
+    cy.contains('Detalle de la venta', { timeout: 10000 }).should('be.visible')
+    cy.get('table tbody tr').should('have.length', 1)
   })
 
   it('3️⃣ Valida stock insuficiente', () => {
@@ -68,26 +69,28 @@ describe('Flujos completos de ventas (E2E - Integración QA)', () => {
 
     // Agregar primer producto disponible
     cy.get('select').first().find('option').eq(1).then($option1 => {
-      const nombre1 = $option1.text()
+      const nombre1 = $option1.text().split(' -')[0] // Extraer solo el nombre sin precio/stock
       cy.get('select').first().select($option1.val())
       cy.get('input[type="number"]').first().clear().type('1')
-      cy.contains('Agregar al carrito').click()
-      cy.get('table').contains(nombre1).should('exist')
+      cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
+      cy.contains('Detalle de la venta').should('be.visible')
+      cy.get('table tbody').should('contain', nombre1)
 
       // Agregar segundo producto
       cy.get('select').first().find('option').eq(2).then($option2 => {
-        const nombre2 = $option2.text()
+        const nombre2 = $option2.text().split(' -')[0]
         cy.get('select').first().select($option2.val())
         cy.get('input[type="number"]').first().clear().type('1')
-        cy.contains('Agregar al carrito').click()
-        cy.get('table').contains(nombre2).should('exist')
+        cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
+        cy.get('table tbody').should('contain', nombre2)
+        cy.get('table tbody tr').should('have.length', 2)
 
-        // Eliminar el primero
-        cy.get('table').contains('tr', nombre1).find('button[title="Eliminar"]').click()
+        // Eliminar el primero (encontrar el botón de eliminar en la primera fila)
+        cy.get('table tbody tr').first().find('button[title="Eliminar"]').click()
 
-        // Verificar que el primero ya no está pero el segundo sigue
-        cy.get('table').contains(nombre1).should('not.exist')
-        cy.get('table').contains(nombre2).should('exist')
+        // Verificar que ahora solo queda 1 fila
+        cy.get('table tbody tr').should('have.length', 1)
+        cy.get('table tbody').should('contain', nombre2)
       })
     })
   })
@@ -113,24 +116,25 @@ describe('Flujos completos de ventas (E2E - Integración QA)', () => {
     // Agregar un producto
     seleccionarPrimerProducto()
     cy.get('input[type="number"]').first().clear().type('1')
-    cy.contains('Agregar al carrito').click()
+    cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
 
     // Esperar que aparezca en el carrito
-    cy.get('table tbody tr').should('have.length.at.least', 1)
+    cy.contains('Detalle de la venta').should('be.visible')
+    cy.get('table tbody tr').should('have.length', 1)
 
     // Confirmar venta
     cy.contains('button', /confirmar/i).should('be.visible').and('not.be.disabled').click()
 
-    // Verificar que el carrito se limpió (venta exitosa)
-    cy.wait(2000)
-    cy.get('table tbody tr').should('not.exist')
+    // Verificar que el carrito se limpió (la tabla desaparece porque items.length === 0)
+    cy.contains('Detalle de la venta').should('not.exist')
   })
 
   it('7️⃣ Test básico - agregar producto', () => {
     seleccionarPrimerProducto()
     cy.get('input[type="number"]').first().clear().type('1')
-    cy.contains('Agregar al carrito').click()
-    cy.get('table tbody tr').should('have.length.at.least', 1)
+    cy.contains('button', 'Agregar al carrito').should('not.be.disabled').click()
+    cy.contains('Detalle de la venta', { timeout: 10000 }).should('be.visible')
+    cy.get('table tbody tr').should('have.length', 1)
   })
 
 })
