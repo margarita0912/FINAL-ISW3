@@ -203,20 +203,28 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Validate QA_URL
+        run: |
+          if [ -z "${{ secrets.QA_URL }}" ]; then
+            echo "Error: QA_URL secret is not set"
+            exit 1
+          fi
+          echo "QA_URL is configured: ${{ secrets.QA_URL }}"
+
       - name: Install dependencies
         working-directory: ./ventas-frontend
         run: npm ci
 
       - name: Wait for QA to be ready
         run: |
-          npx wait-on ${{ secrets.QA_URL }} --timeout 120000
+          npx wait-on "${{ secrets.QA_URL }}" --timeout 120000
 
       - name: Run Cypress against QA
         working-directory: ./ventas-frontend
-        env:
-          CYPRESS_BASE_URL: ${{ secrets.QA_URL }}
-          CYPRESS_API_URL: ${{ secrets.QA_URL }}
-        run: npx cypress run --spec "cypress/e2e/ventas_flow.cy.js,cypress/e2e/acceptance.cy.js" --config baseUrl=${{ secrets.QA_URL }}
+        run: |
+          CYPRESS_BASE_URL="${{ secrets.QA_URL }}" npx cypress run \
+            --spec "cypress/e2e/ventas_flow.cy.js,cypress/e2e/acceptance.cy.js" \
+            --config baseUrl="${{ secrets.QA_URL }}"
 
   # ----------------------------------------------------
   # APROBACIÓN PARA PROD
