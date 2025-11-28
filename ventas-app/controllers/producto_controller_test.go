@@ -28,7 +28,7 @@ func TestListarProductos_OK(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusCreated, resp.Code) // ROTO: espera 201 pero devuelve 200
+	assert.Equal(t, http.StatusOK, resp.Code)
 }
 
 // Test: JSON malformado al crear producto

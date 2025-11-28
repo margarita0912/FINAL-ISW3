@@ -11,22 +11,22 @@ function App() {
     const rol = localStorage.getItem('rol') || '' // 'admin' | 'vendedor' | 'comprador' | 'precio' | ''
 
     return (
-        <div style={{ padding: '2rem' }}>
-            <h1>🛍️ Ventas App</h1>
-            <nav>
-                <Link to="/">Productos</Link>
+        <div style={{ padding: '2rem', backgroundColor: '#1a1a2e', minHeight: '100vh', color: '#ffffff' }}>
+            <h1 style={{ color: '#e94560' }}>🛍️ Ventas App - v2.0</h1>
+            <nav style={{ marginBottom: '1rem' }}>
+                <Link to="/" style={{ color: '#00d9ff' }}>Productos</Link>
                 {/* Ventas solo para vendedor */}
-                {['vendedor'].includes(rol) && <> | <Link to="/ventas">Ventas</Link></>}
-                <> | <Link to="/login">Login</Link></>
+                {['vendedor'].includes(rol) && <> | <Link to="/ventas" style={{ color: '#00d9ff' }}>Ventas</Link></>}
+                <> | <Link to="/login" style={{ color: '#00d9ff' }}>Login</Link></>
 
                 {/* Crear Usuario: comprador o precio (según backend) */}
                 {['comprador', 'precio'].includes(rol) && (
-                    <> | <Link to="/crear-usuario">Crear Usuario</Link></>
+                    <> | <Link to="/crear-usuario" style={{ color: '#00d9ff' }}>Crear Usuario</Link></>
                 )}
 
                 {/* Crear Producto: vendedor o comprador (según backend) */}
                 {['vendedor', 'comprador'].includes(rol) && (
-                    <> | <Link to="/crear-producto">Crear Producto</Link></>
+                    <> | <Link to="/crear-producto" style={{ color: '#00d9ff' }}>Crear Producto</Link></>
                 )}
             </nav>
 

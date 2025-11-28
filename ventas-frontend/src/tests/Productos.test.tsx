@@ -19,7 +19,7 @@ jest.mock('../api/axios', () => {
 test('Productos muestra lista obtenida desde API', async () => {
   render(<Productos />)
 
-  await waitFor(() => expect(screen.getByText(/ProdX/)).toBeInTheDocument()) // ROTO: busca ProdX pero mock devuelve ProdA
+  await waitFor(() => expect(screen.getByText(/ProdA/)).toBeInTheDocument())
 
   expect(screen.getByText(/Stock: 3/)).toBeInTheDocument()
 })
