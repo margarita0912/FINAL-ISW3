@@ -11,7 +11,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_UNIFIED: ghcr.io/cotystrumia/tp_final_is3
+  IMAGE_UNIFIED: ghcr.io/margarita0912/final-isw3
 
 jobs:
 
