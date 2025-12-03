@@ -4,6 +4,16 @@ const { TextEncoder, TextDecoder } = require('util');
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
 
+// Mock de import.meta.env para Vite en Jest
+global.import = {
+	meta: {
+		env: {
+			VITE_API_URL: 'http://localhost:8080',
+			MODE: 'test'
+		}
+	}
+};
+
 // Polyfill TransformStream en el entorno de Jest si no está definido.
 // Preferimos la implementación nativa de Node (`stream/web`) cuando esté disponible.
 try {

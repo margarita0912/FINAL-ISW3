@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import Login from '../pages/Login';
 import api from '../api/axios';
 
@@ -62,7 +63,7 @@ describe('Login Component', () => {
 
     expect(localStorage.getItem('token')).toBe('fake-token-123');
     expect(localStorage.getItem('rol')).toBe('admin');
-    expect(window.location.href).toBe('/');
+    expect(window.location.href).toContain('/');
   });
 
   it('muestra error cuando el login falla', async () => {

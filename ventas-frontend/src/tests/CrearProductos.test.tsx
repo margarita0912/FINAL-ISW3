@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import CrearProductos from '../pages/CrearProductos';
 import api from '../api/axios';
 
@@ -23,7 +24,7 @@ describe('CrearProductos Component', () => {
     
     render(<CrearProductos />);
     
-    expect(screen.getByText(/Crear Producto/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Crear Producto/i })).toBeInTheDocument();
     expect(screen.queryByText(/No tenés permisos/i)).not.toBeInTheDocument();
   });
 
@@ -32,7 +33,7 @@ describe('CrearProductos Component', () => {
     
     render(<CrearProductos />);
     
-    expect(screen.getByText(/Crear Producto/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Crear Producto/i })).toBeInTheDocument();
   });
 
   it('renderiza todos los campos del formulario', () => {
@@ -83,7 +84,7 @@ describe('CrearProductos Component', () => {
     
     render(<CrearProductos />);
     
-    const crearButton = screen.getByText(/Crear/i);
+    const crearButton = screen.getByRole('button', { name: /Crear Producto/i });
     fireEvent.click(crearButton);
     
     await waitFor(() => {
@@ -103,7 +104,7 @@ describe('CrearProductos Component', () => {
     const nombreInput = screen.getByPlaceholderText(/Camisa/i);
     const precioInput = screen.getByPlaceholderText(/2500/i);
     const stockInput = screen.getByPlaceholderText(/10/i);
-    const crearButton = screen.getByText(/Crear/i);
+    const crearButton = screen.getByRole('button', { name: /Crear Producto/i });
 
     fireEvent.change(nombreInput, { target: { value: 'Mouse' } });
     fireEvent.change(precioInput, { target: { value: '25' } });
@@ -133,7 +134,7 @@ describe('CrearProductos Component', () => {
     const nombreInput = screen.getByPlaceholderText(/Camisa/i);
     const precioInput = screen.getByPlaceholderText(/2500/i);
     const stockInput = screen.getByPlaceholderText(/10/i);
-    const crearButton = screen.getByText(/Crear/i);
+    const crearButton = screen.getByRole('button', { name: /Crear Producto/i });
 
     fireEvent.change(nombreInput, { target: { value: 'Test' } });
     fireEvent.change(precioInput, { target: { value: '100' } });
@@ -157,7 +158,7 @@ describe('CrearProductos Component', () => {
     const nombreInput = screen.getByPlaceholderText(/Camisa/i) as HTMLInputElement;
     const precioInput = screen.getByPlaceholderText(/2500/i) as HTMLInputElement;
     const stockInput = screen.getByPlaceholderText(/10/i) as HTMLInputElement;
-    const crearButton = screen.getByText(/Crear/i);
+    const crearButton = screen.getByRole('button', { name: /Crear Producto/i });
 
     fireEvent.change(nombreInput, { target: { value: 'Test' } });
     fireEvent.change(precioInput, { target: { value: '100' } });

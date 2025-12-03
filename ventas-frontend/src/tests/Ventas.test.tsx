@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import Ventas from '../pages/Ventas';
 import api from '../api/axios';
 
@@ -22,7 +23,7 @@ describe('Ventas Component', () => {
 
     render(<Ventas />);
     
-    expect(screen.getByText(/Ventas/i)).toBeInTheDocument();
+    expect(screen.getByText(/Registrar Venta/i)).toBeInTheDocument();
     
     await waitFor(() => {
       expect(mockGet).toHaveBeenCalledWith('/productos');
@@ -76,18 +77,20 @@ describe('Ventas Component', () => {
     expect(screen.getByText(/Cargando/i) || screen.getByText(/Loading/i)).toBeInTheDocument();
   });
 
-  it('valida stock insuficiente', async () => {
+  it('filtra productos sin stock cuando el checkbox está activado', async () => {
     const mockGet = jest.fn().mockResolvedValue({ data: mockProductos });
     (api as jest.Mock).mockResolvedValue({ get: mockGet });
 
     render(<Ventas />);
     
     await waitFor(() => {
-      expect(screen.getByText(/Teclado/i)).toBeInTheDocument();
+      expect(mockGet).toHaveBeenCalledWith('/productos');
     });
 
-    // El producto Teclado tiene stock 0
-    // Intentar agregarlo debería mostrar error
+    // Por defecto, productos con stock 0 no deberían mostrarse si el filtro está activo
+    expect(screen.queryByText(/Teclado/i)).not.toBeInTheDocument();
+    // Pero productos con stock sí
+    expect(screen.getByText(/Laptop/i)).toBeInTheDocument();
   });
 
   it('calcula precios correctamente', async () => {
