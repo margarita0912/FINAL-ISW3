@@ -138,7 +138,7 @@ func TestSetup_AllRoutesRegistered(t *testing.T) {
 	Setup(router)
 
 	routes := router.Routes()
-	
+
 	// Debería haber al menos 8 rutas registradas
 	assert.GreaterOrEqual(t, len(routes), 8)
 }
