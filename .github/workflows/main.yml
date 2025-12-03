@@ -1,4 +1,4 @@
-name: CI - Test, Build, Cypress & Push
+name: CI/CD Pipeline
 
 on:
   push:
@@ -16,21 +16,18 @@ env:
 jobs:
 
   # ----------------------------------------------------
-  # CHECK
+  # UNIT TESTS & SONARCLOUD ANALYSIS
+  # (Tests + SonarCloud en un solo job)
   # ----------------------------------------------------
-  check:
+  unit_tests_and_sonarcloud:
+    name: Unit Tests & SonarCloud Analysis
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-  # ---------------------------------------------------
-  # TEST BACKEND
-  # ---------------------------------------------------
-  test_backend:
-    runs-on: ubuntu-latest
-    needs: check
-    steps:
-      - uses: actions/checkout@v4
+      # Backend: Test & Build
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
@@ -39,134 +36,44 @@ jobs:
         working-directory: ./ventas-app
         run: go test ./... -v -coverprofile=coverage.out
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: go-coverage
-          path: ventas-app/coverage.out
-
-
-
-  # ----------------------------------------------------
-  # TEST FRONTEND
-  # ----------------------------------------------------
-  test_frontend:
-    runs-on: ubuntu-latest
-    needs: check
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - run: npm ci
-        working-directory: ./ventas-frontend
-
-      - name: Clean compiled JS files before tests
-        working-directory: ./ventas-frontend
-        run: find src -name "*.js" -type f -delete || true
-
-      - run: npm run test:ci
-        working-directory: ./ventas-frontend
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: js-coverage
-          path: ventas-frontend/coverage
-
-  # ----------------------------------------------------
-  # BUILD BACKEND
-  # ----------------------------------------------------
-  build_backend:
-    runs-on: ubuntu-latest
-    needs: test_backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-
       - name: Build backend binary
         working-directory: ./ventas-app
         run: go build -o ../backend-app ./cmd/main.go
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: backend-app
-          path: backend-app
-
-  # ----------------------------------------------------
-  # BUILD FRONTEND
-  # ----------------------------------------------------
-  build_frontend:
-    runs-on: ubuntu-latest
-    needs: test_frontend
-    steps:
-      - uses: actions/checkout@v4
+      # Frontend: Test & Build
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install deps
+      - name: Install frontend dependencies
         working-directory: ./ventas-frontend
         run: npm ci
+
+      - name: Clean compiled JS files
+        working-directory: ./ventas-frontend
+        run: find src -name "*.js" -type f -delete || true
+
+      - name: Run frontend tests with coverage
+        working-directory: ./ventas-frontend
+        run: npm run test:ci
 
       - name: Build frontend
         working-directory: ./ventas-frontend
         run: npm run build
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: ventas-frontend/dist
-
-  # ----------------------------------------------------
-  # SonarCloud Scan
-  # -----------------------------------------------------
-  sonarcloud:
-    name: SonarCloud Analysis
-    needs: [test_backend, test_frontend, build_backend, build_frontend]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download Go coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: go-coverage
-          path: ventas-app
-
-      - name: Download JS coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: js-coverage
-          path: ventas-frontend/coverage
-
-      - name: Verify coverage files exist
-        run: |
-          echo "=== Checking Go coverage ==="
-          ls -la ventas-app/ | grep coverage || echo "No coverage files found in ventas-app/"
-          echo "=== Checking JS coverage ==="
-          ls -la ventas-frontend/coverage/ || echo "No coverage directory found"
-          if [ -f ventas-frontend/coverage/lcov.info ]; then
-            echo "✓ lcov.info found"
-            head -20 ventas-frontend/coverage/lcov.info
-          else
-            echo "✗ lcov.info NOT found"
-          fi
-
+      # SonarCloud Analysis
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   # ----------------------------------------------------
-  # BUILD & PUSH UNIFIED IMAGE (FRONT + BACK)
+  # BUILD & PUSH DOCKER IMAGES
   # ----------------------------------------------------
-  build_unified_image:
+  build_and_push_images:
+    name: Build & Push Docker Images
     runs-on: ubuntu-latest
-    needs: [sonarcloud]
+    needs: unit_tests_and_sonarcloud
     permissions:
       contents: read
       packages: write
@@ -189,50 +96,34 @@ jobs:
           tags: ${{ env.IMAGE_UNIFIED }}:release
 
   # ----------------------------------------------------
-  # DEPLOY QA (ONE SERVICE)
+  # DEPLOY TO QA
   # ----------------------------------------------------
-  deploy_qa:
+  deploy_to_qa:
+    name: Deploy to QA
     runs-on: ubuntu-latest
-    needs: build_unified_image
-    if: github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/main'
-    steps:
-      - name: Deploy QA unified app
-        run: curl -fsSL -X POST "${{ secrets.RENDER_APP_QA_HOOK }}" || true
-
-      - name: Wait for QA deployment
-        run: sleep 60
-
-  # ----------------------------------------------------
-  # CYPRESS E2E INTEGRATION (QA REAL)
-  # ----------------------------------------------------
-  e2e_integration_qa:
-    runs-on: ubuntu-latest
-    needs: deploy_qa
+    needs: build_and_push_images
     if: github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Deploy QA
+        run: curl -fsSL -X POST "${{ secrets.RENDER_APP_QA_HOOK }}" || true
+
+      - name: Wait for deployment
+        run: sleep 60
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-
-      - name: Validate QA_URL
-        run: |
-          if [ -z "${{ secrets.QA_URL }}" ]; then
-            echo "Error: QA_URL secret is not set"
-            exit 1
-          fi
-          echo "QA_URL is configured: ${{ secrets.QA_URL }}"
 
       - name: Install dependencies
         working-directory: ./ventas-frontend
         run: npm ci
 
       - name: Wait for QA to be ready
-        run: |
-          npx wait-on "${{ secrets.QA_URL }}" --timeout 120000
+        run: npx wait-on "${{ secrets.QA_URL }}" --timeout 120000
 
-      - name: Run Cypress against QA
+      - name: Run Cypress Integration Tests
         working-directory: ./ventas-frontend
         run: |
           CYPRESS_BASE_URL="${{ secrets.QA_URL }}" npx cypress run \
@@ -240,29 +131,19 @@ jobs:
             --config baseUrl="${{ secrets.QA_URL }}"
 
   # ----------------------------------------------------
-  # APROBACIÓN PARA PROD
+  # DEPLOY TO PRODUCTION (with approval)
   # ----------------------------------------------------
-  approve_prod:
+  deploy_to_production:
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [build_unified_image, e2e_integration_qa]
-    # Ejecuta si: imagen OK y (viene de main con cypress OK, o viene de prod sin cypress)
+    needs: [build_and_push_images, deploy_to_qa]
     if: |
       always() &&
-      needs.build_unified_image.result == 'success' &&
+      needs.build_and_push_images.result == 'success' &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/prod') &&
-      (needs.e2e_integration_qa.result == 'success' || needs.e2e_integration_qa.result == 'skipped')
+      (needs.deploy_to_qa.result == 'success' || needs.deploy_to_qa.result == 'skipped')
     environment:
       name: production
     steps:
-      - run: echo "Esperando aprobación manual..."
-
-  # ----------------------------------------------------
-  # DEPLOY PROD (ONE SERVICE)
-  # ----------------------------------------------------
-  deploy_prod:
-    runs-on: ubuntu-latest
-    needs: approve_prod
-    if: github.ref == 'refs/heads/prod' || github.ref == 'refs/heads/main'
-    steps:
-      - name: Deploy PROD unified app
+      - name: Deploy Production
         run: curl -fsSL -X POST "${{ secrets.RENDER_APP_PROD_HOOK }}" || true
