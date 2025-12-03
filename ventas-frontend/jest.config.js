@@ -25,6 +25,7 @@ export default {
     moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
     collectCoverage: true,
     coverageDirectory: 'coverage',
+    coverageReporters: ['text', 'lcov', 'clover', 'json'],
     testMatch: ['**/tests/**/*.test.ts?(x)', '**/src/tests/**/*.test.ts?(x)'],
     globals: {
         'import.meta': {

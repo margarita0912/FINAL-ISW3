@@ -65,12 +65,10 @@ jobs:
         working-directory: ./ventas-frontend
         run: find src -name "*.js" -type f -delete || true
 
-      - name: Run frontend tests with coverage
+      - run: npm run test:ci
         working-directory: ./ventas-frontend
-        run: npm run test:ci
 
-      - name: Upload frontend coverage
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: js-coverage
           path: ventas-frontend/coverage
@@ -144,6 +142,15 @@ jobs:
         with:
           name: js-coverage
           path: ventas-frontend/coverage
+
+      - name: Verify coverage files exist
+        run: |
+          echo "Checking Go coverage..."
+          ls -lah ventas-app/coverage.out || echo "Go coverage not found"
+          echo "Checking JS coverage..."
+          ls -lah ventas-frontend/coverage/lcov.info || echo "JS coverage not found"
+          echo "Frontend coverage directory contents:"
+          ls -lah ventas-frontend/coverage/ || echo "Coverage directory not found"
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
