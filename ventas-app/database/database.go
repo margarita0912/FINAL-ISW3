@@ -1,11 +1,6 @@
 package database
 
 import (
-	"fmt"
-	"log"
-	"ventas-app/models"
-
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -35,8 +30,10 @@ var DBs = make(map[string]*gorm.DB)
 			fmt.Println("❌", key, "no conectado")
 		}
 	}
-} */
+}
 
+// connectFromMap se mantiene comentado - no se usa actualmente
+/*
 func connectFromMap(env map[string]string) *gorm.DB {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
 		env["DB_USER"],
@@ -56,3 +53,4 @@ func connectFromMap(env map[string]string) *gorm.DB {
 	db.AutoMigrate(&models.Usuario{}, &models.Producto{}, &models.Compra{}, &models.Venta{})
 	return db
 }
+*/
