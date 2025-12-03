@@ -124,7 +124,7 @@ jobs:
   # -----------------------------------------------------
   sonarcloud:
     name: SonarCloud Analysis
-    needs: [build_backend, build_frontend]
+    needs: [test_backend, test_frontend, build_backend, build_frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -145,12 +145,16 @@ jobs:
 
       - name: Verify coverage files exist
         run: |
-          echo "Checking Go coverage..."
-          ls -lah ventas-app/coverage.out || echo "Go coverage not found"
-          echo "Checking JS coverage..."
-          ls -lah ventas-frontend/coverage/lcov.info || echo "JS coverage not found"
-          echo "Frontend coverage directory contents:"
-          ls -lah ventas-frontend/coverage/ || echo "Coverage directory not found"
+          echo "=== Checking Go coverage ==="
+          ls -la ventas-app/ | grep coverage || echo "No coverage files found in ventas-app/"
+          echo "=== Checking JS coverage ==="
+          ls -la ventas-frontend/coverage/ || echo "No coverage directory found"
+          if [ -f ventas-frontend/coverage/lcov.info ]; then
+            echo "✓ lcov.info found"
+            head -20 ventas-frontend/coverage/lcov.info
+          else
+            echo "✗ lcov.info NOT found"
+          fi
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2

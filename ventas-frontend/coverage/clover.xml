@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1764736865650" clover="3.2.0">
-  <project timestamp="1764736865650" name="All files">
+<coverage generated="1764738255485" clover="3.2.0">
+  <project timestamp="1764738255485" name="All files">
     <metrics statements="201" coveredstatements="142" conditionals="103" coveredconditionals="53" methods="50" coveredmethods="30" elements="354" coveredelements="225" complexity="0" loc="201" ncloc="201" packages="4" files="9" classes="9"/>
     <package name="src">
       <metrics statements="10" coveredstatements="10" conditionals="8" coveredconditionals="5" methods="1" coveredmethods="1"/>
@@ -37,7 +37,7 @@
       <metrics statements="6" coveredstatements="1" conditionals="0" coveredconditionals="0" methods="3" coveredmethods="0"/>
       <file name="server.ts" path="C:\Users\marga\OneDrive\Escritorio\MARGARITA\ING DE SOFT 3\TP_Final_IS3\ventas-frontend\src\mocks\server.ts">
         <metrics statements="6" coveredstatements="1" conditionals="0" coveredconditionals="0" methods="3" coveredmethods="0"/>
-        <line num="1" count="13" type="stmt"/>
+        <line num="1" count="12" type="stmt"/>
         <line num="2" count="0" type="stmt"/>
         <line num="4" count="0" type="stmt"/>
         <line num="7" count="0" type="stmt"/>
