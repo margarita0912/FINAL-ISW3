@@ -5,8 +5,8 @@ describe('Acceptance - flujo básico de integración', () => {
     cy.get('body').should('not.be.empty');
     
     // Hacer login real
-    cy.get('input[placeholder="Email"]').type('ariel');
-    cy.get('input[placeholder="Password"]').type('piqui123');
+    cy.get('input[placeholder="Email"]').type('julio');
+    cy.get('input[placeholder="Password"]').type('julio123');
     cy.contains('Ingresar').click();
     
     // Verificar que redirige (no queda en /login)

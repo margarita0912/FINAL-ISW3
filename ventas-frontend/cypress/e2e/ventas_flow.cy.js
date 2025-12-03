@@ -5,8 +5,8 @@ describe('Flujos completos de ventas (E2E - Integración QA)', () => {
   beforeEach(() => {
     // Login REAL contra QA
     cy.visit('/login')
-    cy.get('input[placeholder="Email"]', { timeout: 10000 }).should('be.visible').type('ariel')
-    cy.get('input[placeholder="Password"]').type('piqui123')
+    cy.get('input[placeholder="Email"]', { timeout: 10000 }).should('be.visible').type('julio')
+    cy.get('input[placeholder="Password"]').type('julio123')
     cy.contains('Ingresar').click()
     
     // Esperar redirección tras login exitoso (puede ir a /productos o /ventas)
