@@ -12,7 +12,6 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/margarita0912/final-isw3
-  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
 
@@ -95,12 +94,8 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-            ${{ env.IMAGE_NAME }}:${{ github.ref_name }}-latest
-          
-      - name: Set output with image tag
-        id: image
-        run: echo "tag=${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT
+            ${{ env.IMAGE_NAME }}:main-latest
+            ${{ env.IMAGE_NAME }}:prod-release
 
   # ----------------------------------------------------
   # DEPLOY TO QA
@@ -152,26 +147,8 @@ jobs:
     environment:
       name: production
     steps:
-      - uses: actions/checkout@v4
+      - name: Notify production deployment approved
+        run: echo "✅ Production deployment approved. Image prod-release is ready."
       
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ secrets.GHCR_USER }}
-          password: ${{ secrets.GHCR_PAT }}
-      
-      - name: Tag approved image for production
-        run: |
-          # Pull la imagen aprobada de QA (main-latest)
-          docker pull ${{ env.IMAGE_NAME }}:main-latest
-          
-          # Re-tag como prod-release
-          docker tag ${{ env.IMAGE_NAME }}:main-latest ${{ env.IMAGE_NAME }}:prod-release
-          
-          # Push el nuevo tag
-          docker push ${{ env.IMAGE_NAME }}:prod-release
-          
-          echo "✅ Tagged image as prod-release: $(docker inspect --format='{{.Id}}' ${{ env.IMAGE_NAME }}:main-latest | cut -c8-19)"
-
       - name: Deploy Production
         run: curl -fsSL -X POST "${{ secrets.RENDER_APP_PROD_HOOK }}" || true

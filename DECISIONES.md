@@ -205,66 +205,58 @@ Push a main/qa/prod
   4. Ejecutar Cypress E2E tests contra QA_URL
 
 #### **Job 4: Deploy to Production**
-- **Duración:** ~1 minuto + tiempo de aprobación manual
+- **Duración:** ~5 segundos + tiempo de aprobación manual
 - **Condición:** Requiere que QA haya pasado exitosamente
 - **Acciones:**
   1. **⏸️ Espera aprobación manual** (GitHub environment: production)
-  2. Pull imagen `main-latest` (la que está en QA)
-  3. Re-tag como `prod-release`
-  4. Push tag `prod-release`
-  5. Trigger deploy webhook de Render PROD
+  2. Trigger deploy webhook de Render PROD
 
 ---
 
 ## 🏷️ Estrategia de Tags de Imágenes Docker
 
-### **Tags Generados por Build:**
+### **Dos Tags - Mismo SHA**
 
-Cada vez que se hace build, se crean 2 tags:
+Cada build genera **2 tags apuntando a la misma imagen**:
 
-1. **Tag por SHA del commit** (inmutable, trazable)
-   - Formato: `ghcr.io/margarita0912/final-isw3:abc1234def5678`
-   - Uso: Identificar exactamente qué código contiene la imagen
-   - Ventaja: Rollback preciso a cualquier versión anterior
-
-2. **Tag por branch** (mutable, última versión)
-   - Formato: `ghcr.io/margarita0912/final-isw3:main-latest`
-   - Uso: QA siempre despliega la última versión de main
-   - Se sobrescribe con cada push nuevo
+1. **`main-latest`** - Para QA (siempre actualizado)
+2. **`prod-release`** - Para PROD (misma imagen, nombre diferente)
 
 ### **Tags por Ambiente:**
 
 | Ambiente | Tag | Actualización | Uso |
 |----------|-----|---------------|-----|
 | **QA** | `main-latest` | Cada push a main | Deploy automático |
-| **PROD** | `prod-release` | Solo tras aprobación manual | Deploy controlado |
+| **PROD** | `prod-release` | Cada push a main | Deploy tras aprobación manual |
 
-### **Flujo de Tags:**
+### **Flujo de Despliegue:**
 
 ```
 Push a main (commit abc123)
   ↓
-Build crea tags:
-  - ghcr.io/.../final-isw3:abc123
-  - ghcr.io/.../final-isw3:main-latest (sobrescribe)
+Build crea 2 tags de la MISMA imagen:
+  - ghcr.io/.../final-isw3:main-latest
+  - ghcr.io/.../final-isw3:prod-release
+  (ambos apuntan al mismo SHA de imagen)
   ↓
-QA usa: main-latest (despliega abc123)
+QA despliega: main-latest (abc123)
   ↓
 Tests E2E pasan ✓
   ↓
 Aprobación manual en GitHub
   ↓
-Pipeline re-tagea:
-  docker tag main-latest → prod-release
-  ↓
-PROD usa: prod-release (despliega abc123)
+PROD despliega: prod-release (abc123, misma imagen que QA)
 ```
 
 **Ventajas:**
-- ✅ QA siempre tiene lo último
-- ✅ PROD despliega versión específica aprobada
-- ✅ Si llega nuevo push mientras QA testea, no afecta PROD
-- ✅ Trazabilidad completa con SHA tags
+- ✅ Tags separados por ambiente (claridad)
+- ✅ Ambos tags siempre sincronizados (mismo SHA)
+- ✅ Render configuración diferenciada pero misma imagen
+- ✅ Simple: Solo 2 tags, sin re-taggeo manual
+
+**Consideración:**
+- ℹ️ Ambos tags se actualizan con cada push (apuntan a la misma imagen nueva)
+- ✅ **Protección:** Concurrency queue evita que pipelines se ejecuten en paralelo
 
 ---
 
@@ -276,9 +268,8 @@ Si dos pipelines corren en paralelo:
 - Pipeline 2 sobrescribe la imagen `main-latest` mientras Pipeline 1 testea
 - Pipeline 1 aprueba a PROD → despliega imagen incorrecta (del Pipeline 2)
 
-### **Solución Implementada:**
+### **Solución Implementada: Concurrency Queue**
 
-**1. Concurrency Queue (Secuencial)**
 ```yaml
 concurrency:
   group: deploy-${{ github.ref }}
@@ -290,10 +281,6 @@ concurrency:
 - Si llega un push mientras otro está corriendo, el nuevo **espera en cola**
 - Garantiza que cada pipeline completa QA → Tests → Aprobación antes del siguiente
 
-**2. Tags Separados por Ambiente**
-- **QA:** Usa `main-latest` (puede cambiar libremente)
-- **PROD:** Usa `prod-release` (solo cambia tras aprobación manual)
-
 **Ejemplo de ejecución:**
 ```
 Timeline:
@@ -301,20 +288,25 @@ Timeline:
 09:00 - Push commit A
 09:01 - Pipeline 1 inicia: Build → Deploy QA (main-latest = A)
 09:05 - Push commit B
-09:05 - Pipeline 2 ESPERA (en cola)
+09:05 - Pipeline 2 ESPERA (en cola, no ejecuta nada)
 09:06 - Pipeline 1: Tests E2E en QA (con imagen A) ✓
-09:08 - Pipeline 1: Aprobación manual → tag prod-release = A
-09:09 - Pipeline 1: Deploy PROD (prod-release = A) ✓
+09:08 - Pipeline 1: Aprobación manual ✓
+09:09 - Pipeline 1: Deploy PROD (main-latest = A) ✓
 09:10 - Pipeline 2 COMIENZA: Build → Deploy QA (main-latest = B)
-        (PROD sigue con prod-release = A, no se afecta)
+        QA ahora tiene B, PROD sigue con A hasta nueva aprobación
 ```
 
 **Ventajas:**
-- ✅ Elimina race conditions completamente
+- ✅ Evita race conditions mediante cola secuencial
 - ✅ QA siempre testea la imagen correcta
-- ✅ PROD despliega exactamente lo que fue aprobado
-- ✅ Simple de implementar y mantener
-- ✅ No requiere infraestructura adicional
+- ✅ PROD despliega lo que fue aprobado (mientras no haya nuevo push)
+- ✅ Muy simple de implementar (una sola línea de config)
+- ✅ No requiere tags adicionales ni infraestructura extra
+
+**Consideración:**
+- ⚠️ Si alguien **cancela manualmente** un pipeline en GitHub Actions, la protección se rompe
+- ⚠️ Si hay un push nuevo **después de aprobar pero antes de deploy**, PROD podría tomar la imagen nueva
+- ✅ En la práctica esto es raro porque el deploy a PROD es inmediato tras aprobación
 
 ---
 
