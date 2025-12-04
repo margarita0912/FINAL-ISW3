@@ -1,5 +1,60 @@
 # Decisiones Técnicas - TP Final IS3
 
+## 🎯 Solución al Problema de Race Conditions
+
+### **Problema Identificado**
+Si dos pipelines corren en paralelo y ambos modifican la misma imagen (ej: `main-latest`):
+- Pipeline 1 llega a QA y comienza tests
+- Pipeline 2 sobrescribe `main-latest` con código nuevo
+- Pipeline 1 termina tests y despliega a PROD
+- **PROD recibe código del Pipeline 2 (no testeado)** ❌
+
+### **Solución Implementada: Concurrency Queue + SHA Tags**
+
+**Combinación de dos estrategias:**
+
+#### 1. **Concurrency Queue** - Ejecución Secuencial
+```yaml
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+```
+- Los pipelines se ejecutan **uno por uno**, no en paralelo
+- Si llega un nuevo push, **espera en cola** hasta que termine el anterior
+- Garantiza que cada pipeline completa: Build → QA → Tests → PROD
+
+#### 2. **SHA Tags** - Trazabilidad Perfecta
+- Cada commit genera su propia imagen con tag único: `{SHA-corto}` (ej: `abc1234`)
+- Tag adicional `latest` como alias al más reciente
+- En los logs se muestra claramente qué SHA se desplegó en cada ambiente
+
+**Ejemplo de ejecución:**
+```
+09:00 - Push commit abc1234
+09:01 - Pipeline 1 INICIA: Build imagen abc1234
+09:05 - Push commit def5678
+09:05 - Pipeline 2 ESPERA en cola (no ejecuta nada)
+09:06 - Pipeline 1: Deploy QA con abc1234
+09:07 - Pipeline 1: Tests E2E pasan ✓
+09:09 - Pipeline 1: Aprobación manual ✓
+09:10 - Pipeline 1: Deploy PROD con abc1234 ✓
+09:11 - Pipeline 2 COMIENZA: Build imagen def5678
+```
+
+**Ventajas:**
+- ✅ **Sin race conditions**: Cola secuencial previene sobrescrituras
+- ✅ **Trazabilidad**: Cada imagen identificada por SHA del commit
+- ✅ **Simple**: Solo una línea de config + output del SHA
+- ✅ **Compatible con Render**: Usa webhooks estándar (no requiere API)
+- ✅ **Inmutabilidad**: Cada SHA nunca cambia
+
+**Limitaciones conocidas:**
+- ⏱️ Si hay muchos pushes consecutivos, se forma cola (espera ~5-10 min por pipeline)
+- ⚠️ Cancelar manualmente un pipeline en GitHub rompe la protección
+- ℹ️ Suficiente para este proyecto (pushes no son tan frecuentes)
+
+---
+
 ## 🛠️ Stack Tecnológico
 
 ### **Backend**
@@ -189,124 +244,86 @@ Push a main/qa/prod
 #### **Job 2: Build & Push Docker Images**
 - **Duración:** ~1-2 minutos
 - **Acciones:**
-  1. Login a GitHub Container Registry (ghcr.io)
-  2. Build imagen multi-stage (Dockerfile)
-  3. Push con múltiples tags:
-     - `ghcr.io/margarita0912/final-isw3:{SHA}` (commit específico, ej: `abc1234`)
-     - `ghcr.io/margarita0912/final-isw3:main-latest` (última versión de branch main)
+  1. Extrae SHA corto del commit: `$(echo ${{ github.sha }} | cut -c1-7)`
+  2. Login a GitHub Container Registry (ghcr.io)
+  3. Build imagen multi-stage (Dockerfile)
+  4. Push con tags:
+     - `ghcr.io/margarita0912/final-isw3:{SHA}` (único por commit, ej: `abc1234`)
+     - `ghcr.io/margarita0912/final-isw3:latest` (alias al más reciente)
+- **Outputs:** `image_sha` - SHA corto para trazabilidad en deploys
 
 #### **Job 3: Deploy to QA**
 - **Duración:** ~3-5 minutos
 - **Condición:** `if: github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/main'`
 - **Acciones:**
-  1. Trigger deploy webhook de Render QA
-  2. Wait 60s para que Render complete el deploy
-  3. Wait-on hasta que QA responda (timeout 120s)
-  4. Ejecutar Cypress E2E tests contra QA_URL
+  1. Recibe `image_sha` del Job 2 (ej: `abc1234`)
+  2. Log: "🚀 Deploying to QA with image SHA: abc1234"
+  3. Trigger deploy webhook de Render QA
+  4. Wait 60s para que Render complete el deploy
+  5. Wait-on hasta que QA responda (timeout 120s)
+  6. Ejecutar Cypress E2E tests contra QA_URL
 
 #### **Job 4: Deploy to Production**
 - **Duración:** ~5 segundos + tiempo de aprobación manual
 - **Condición:** Requiere que QA haya pasado exitosamente
 - **Acciones:**
   1. **⏸️ Espera aprobación manual** (GitHub environment: production)
-  2. Trigger deploy webhook de Render PROD
+  2. Recibe `image_sha` del Job 2 (mismo SHA que QA testeó)
+  3. Log: "✅ Production deployment approved for SHA: abc1234"
+  4. Trigger deploy webhook de Render PROD
 
 ---
 
 ## 🏷️ Estrategia de Tags de Imágenes Docker
 
-### **Dos Tags - Mismo SHA**
+### **SHA Tags + Latest**
 
-Cada build genera **2 tags apuntando a la misma imagen**:
+Cada build genera **2 tags**:
 
-1. **`main-latest`** - Para QA (siempre actualizado)
-2. **`prod-release`** - Para PROD (misma imagen, nombre diferente)
+1. **`{SHA-corto}`** - Identificador único inmutable (ej: `abc1234`)
+2. **`latest`** - Alias al build más reciente
 
-### **Tags por Ambiente:**
+### **Ventajas del SHA Tag:**
 
-| Ambiente | Tag | Actualización | Uso |
-|----------|-----|---------------|-----|
-| **QA** | `main-latest` | Cada push a main | Deploy automático |
-| **PROD** | `prod-release` | Cada push a main | Deploy tras aprobación manual |
+| Característica | Beneficio |
+|----------------|-----------|
+| **Inmutabilidad** | Cada SHA nunca cambia, siempre apunta al mismo código |
+| **Trazabilidad** | Logs muestran exactamente qué SHA se desplegó |
+| **Auditoría** | Puedes ver en GitHub Actions qué commit está en cada ambiente |
+| **Rollback** | Fácil volver a cualquier versión anterior desde Render |
 
 ### **Flujo de Despliegue:**
 
 ```
-Push a main (commit abc123)
+Push a main (commit abc1234)
   ↓
-Build crea 2 tags de la MISMA imagen:
-  - ghcr.io/.../final-isw3:main-latest
-  - ghcr.io/.../final-isw3:prod-release
-  (ambos apuntan al mismo SHA de imagen)
+Build crea 2 tags:
+  - ghcr.io/.../final-isw3:abc1234 (SHA único)
+  - ghcr.io/.../final-isw3:latest (alias)
   ↓
-QA despliega: main-latest (abc123)
+Pipeline output: "📦 Image tag: abc1234"
+  ↓
+QA despliega: "🚀 Deploying to QA with image SHA: abc1234"
+  (Render webhook usa tag 'latest', pero sabemos que es abc1234)
   ↓
 Tests E2E pasan ✓
   ↓
 Aprobación manual en GitHub
   ↓
-PROD despliega: prod-release (abc123, misma imagen que QA)
+PROD despliega: "✅ Production deployment approved for SHA: abc1234"
+  (Render webhook usa tag 'latest', mismo código que QA testeó)
 ```
 
-**Ventajas:**
-- ✅ Tags separados por ambiente (claridad)
-- ✅ Ambos tags siempre sincronizados (mismo SHA)
-- ✅ Render configuración diferenciada pero misma imagen
-- ✅ Simple: Solo 2 tags, sin re-taggeo manual
+### **Configuración de Render:**
 
-**Consideración:**
-- ℹ️ Ambos tags se actualizan con cada push (apuntan a la misma imagen nueva)
-- ✅ **Protección:** Concurrency queue evita que pipelines se ejecuten en paralelo
+Ambos servicios (QA y PROD) configurados con:
+- Image URL: `ghcr.io/margarita0912/final-isw3:latest`
+- Auto-Deploy: Enabled (responde a webhooks)
 
----
-
-## 🔐 Solución al Problema de Race Conditions
-
-### **Problema Original:**
-Si dos pipelines corren en paralelo:
-- Pipeline 1 despliega a QA → corre tests
-- Pipeline 2 sobrescribe la imagen `main-latest` mientras Pipeline 1 testea
-- Pipeline 1 aprueba a PROD → despliega imagen incorrecta (del Pipeline 2)
-
-### **Solución Implementada: Concurrency Queue**
-
-```yaml
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false  # No cancelar, hacer cola secuencial
-```
-
-**Cómo funciona:**
-- Los pipelines se ejecutan **uno por uno en cola**, no en paralelo
-- Si llega un push mientras otro está corriendo, el nuevo **espera en cola**
-- Garantiza que cada pipeline completa QA → Tests → Aprobación antes del siguiente
-
-**Ejemplo de ejecución:**
-```
-Timeline:
-─────────────────────────────────────────────────
-09:00 - Push commit A
-09:01 - Pipeline 1 inicia: Build → Deploy QA (main-latest = A)
-09:05 - Push commit B
-09:05 - Pipeline 2 ESPERA (en cola, no ejecuta nada)
-09:06 - Pipeline 1: Tests E2E en QA (con imagen A) ✓
-09:08 - Pipeline 1: Aprobación manual ✓
-09:09 - Pipeline 1: Deploy PROD (main-latest = A) ✓
-09:10 - Pipeline 2 COMIENZA: Build → Deploy QA (main-latest = B)
-        QA ahora tiene B, PROD sigue con A hasta nueva aprobación
-```
-
-**Ventajas:**
-- ✅ Evita race conditions mediante cola secuencial
-- ✅ QA siempre testea la imagen correcta
-- ✅ PROD despliega lo que fue aprobado (mientras no haya nuevo push)
-- ✅ Muy simple de implementar (una sola línea de config)
-- ✅ No requiere tags adicionales ni infraestructura extra
-
-**Consideración:**
-- ⚠️ Si alguien **cancela manualmente** un pipeline en GitHub Actions, la protección se rompe
-- ⚠️ Si hay un push nuevo **después de aprobar pero antes de deploy**, PROD podría tomar la imagen nueva
-- ✅ En la práctica esto es raro porque el deploy a PROD es inmediato tras aprobación
+**Nota:** Aunque ambos usan tag `latest`, la **concurrency queue** garantiza que:
+- Solo un pipeline modifica `latest` a la vez
+- QA termina de testear antes de que otro pipeline actualice la imagen
+- PROD despliega el mismo `latest` que QA aprobó (protegido por cola)
 
 ---
 
