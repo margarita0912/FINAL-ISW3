@@ -12,7 +12,7 @@ function App() {
 
     return (
         <div style={{ padding: '2rem', backgroundColor: '#1a1a2e', minHeight: '100vh', color: '#ffffff' }}>
-            <h1 style={{ color: '#e94560' }}>🛍️ Ventas App - v2.0</h1>
+            <h1 style={{ color: '#e94560' }}>🛍️ Ventas App</h1>
             <nav style={{ marginBottom: '1rem' }}>
                 <Link to="/" style={{ color: '#00d9ff' }}>Productos</Link>
                 {/* Ventas solo para vendedor */}
