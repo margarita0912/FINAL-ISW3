@@ -1,0 +1,357 @@
+# Decisiones Técnicas - TP Final IS3
+
+## 🛠️ Stack Tecnológico
+
+### **Backend**
+- **Lenguaje:** Go 1.22
+- **Framework Web:** Gin (router HTTP de alto rendimiento)
+- **ORM:** GORM (para interacción con base de datos)
+- **Autenticación:** JWT con `golang-jwt/jwt/v5` + bcrypt
+- **CORS:** gin-contrib/cors
+- **Driver DB:** go-sql-driver/mysql
+
+### **Frontend**
+- **Framework:** React 19.1.1
+- **Lenguaje:** TypeScript
+- **Build Tool:** Vite 7.1.7
+- **Routing:** React Router 7.1.1
+- **HTTP Client:** Axios
+- **Styling:** Tailwind CSS (inline classes)
+
+### **Base de Datos**
+- **Motor:** MySQL 8
+- **Hosting:** Railway
+- **Conexión:** TLS habilitado
+
+### **Testing**
+- **Backend:** Go testing + testify
+- **Frontend:** Jest 29.7.0 + React Testing Library + MSW
+- **E2E:** Cypress 15.6.0
+
+### **CI/CD**
+- **Pipeline:** GitHub Actions
+- **Registry:** GitHub Container Registry (ghcr.io)
+- **Quality Gate:** SonarCloud
+- **Deployment:** Render.com
+
+### **Containerización**
+- **Docker:** Multi-stage builds
+- **Base Images:** 
+  - Backend: `golang:1.24` → `node:20-slim`
+  - Frontend: `node:20` (build) → incluido en imagen unificada
+
+---
+
+## 📋 Testing Strategy
+
+### 1. **Unit Tests - Backend (Go)**
+
+**Ubicación:** `ventas-app/**/*_test.go`
+
+**Framework:** Go testing + testify
+
+**Archivos:**
+- `config/config_test.go` - Tests de carga de configuración
+- `controllers/*_controller_test.go` - Tests de controladores con mocks
+- `middleware/auth_test.go` - Tests de autenticación JWT
+- `models/*_test.go` - Tests de modelos de datos
+- `routes/routes_test.go` - Tests de registro de rutas
+- `utils/jwt_test.go` - Tests de generación y validación de tokens
+
+**Cobertura:** 96.1% en controllers, 100% en middleware/routes/utils
+
+**Cómo ejecutar:**
+```bash
+cd ventas-app
+go test ./... -v -coverprofile=coverage.out
+```
+
+**Características:**
+- Usan mocks para aislar la base de datos
+- Validan lógica de negocio sin dependencias externas
+- Rápidos de ejecutar (~1 segundo)
+
+**Integración con SonarCloud:**
+- Genera `coverage.out` en formato Go coverage
+- SonarCloud lee este archivo vía propiedad `sonar.go.coverage.reportPaths=ventas-app/coverage.out`
+- Reporta coverage por paquete y líneas cubiertas/no cubiertas
+
+---
+
+### 2. **Unit Tests - Frontend (React)**
+
+**Ubicación:** `ventas-frontend/src/tests/*.test.tsx`
+
+**Framework:** Jest + React Testing Library + MSW (Mock Service Worker)
+
+**Archivos:**
+- `App.test.tsx` - Tests del componente principal
+- `Login.test.tsx` - Tests de autenticación
+- `Ventas.test.tsx` - Tests de registro de ventas
+- `CrearProductos.test.tsx` - Tests de creación de productos
+- `CrearUsuario.test.tsx` - Tests de creación de usuarios
+- `RoleRoute.test.tsx` - Tests de protección de rutas por rol
+- `EntornoSelector.test.tsx` - Tests de selector de entorno
+- `useValidacion.test.ts` - Tests de hook de validación
+
+**Cobertura:** 67.77% (64 tests)
+
+**Cómo ejecutar:**
+```bash
+cd ventas-frontend
+npm run test:ci
+```
+
+**Características:**
+- Mockean llamadas HTTP con MSW
+- Validan rendering, interacciones de usuario, y estados
+- Ejecutan en ~15 segundos
+
+**Integración con SonarCloud:**
+- Jest configurado con `coverageReporters: ['text', 'lcov', 'clover', 'json']`
+- Genera `lcov.info` en formato LCOV estándar
+- SonarCloud lee vía `sonar.javascript.lcov.reportPaths=ventas-frontend/coverage/lcov.info`
+- Incluye cobertura de líneas, branches, y funciones
+
+---
+
+### 3. **Integration Tests E2E (Cypress)**
+
+**Ubicación:** `ventas-frontend/cypress/e2e/`
+
+**Framework:** Cypress
+
+**Archivos:**
+- `acceptance.cy.js` - Tests de aceptación básicos
+- `ventas_flow.cy.js` - Flujo completo de ventas
+
+**Cómo ejecutar:**
+```bash
+cd ventas-frontend
+npx cypress run --spec "cypress/e2e/ventas_flow.cy.js,cypress/e2e/acceptance.cy.js"
+```
+
+**Características:**
+- Se ejecutan contra el ambiente de QA desplegado
+- Validan el sistema completo (frontend + backend + base de datos)
+- Ejecutan después del deploy a QA en el pipeline
+- Credenciales de test: `julio/julio123`
+
+**Casos de prueba:**
+- Login con credenciales válidas/inválidas
+- Navegación entre páginas según rol
+- Flujo completo de registro de venta
+- Validaciones de formularios
+
+---
+
+## 🔄 Pipeline CI/CD
+
+**Archivo:** `.github/workflows/main.yml`
+
+### **Flujo General:**
+
+```
+Push a main/qa/prod
+    ↓
+[Job 1] Unit Tests & SonarCloud Analysis
+    ├─ Backend: Tests + Build
+    ├─ Frontend: Tests + Build
+    └─ SonarCloud: Análisis de cobertura y calidad
+    ↓
+[Job 2] Build & Push Docker Images
+    ├─ Build imagen unificada (backend + frontend)
+    ├─ Tag: {SHA}, {branch}-latest
+    └─ Push a ghcr.io
+    ↓
+[Job 3] Deploy to QA (solo si branch = main/qa)
+    ├─ Deploy a Render QA (webhook)
+    ├─ Wait 60s para estabilización
+    └─ Cypress E2E tests contra QA
+    ↓
+[Job 4] Deploy to Production (solo si branch = main/prod)
+    ├─ ⏸️ Requiere aprobación manual (environment: production)
+    ├─ Tag imagen como prod-release
+    └─ Deploy a Render PROD (webhook)
+```
+
+### **Jobs Detallados:**
+
+#### **Job 1: Unit Tests & SonarCloud Analysis**
+- **Duración:** ~2 minutos
+- **Acciones:**
+  1. Checkout código
+  2. Setup Go 1.22 → tests backend → build binario
+  3. Setup Node 20 → tests frontend → build dist
+  4. SonarCloud scan con reportes de cobertura
+- **Outputs:** Coverage reports (lcov.info, coverage.out)
+
+#### **Job 2: Build & Push Docker Images**
+- **Duración:** ~1-2 minutos
+- **Acciones:**
+  1. Login a GitHub Container Registry (ghcr.io)
+  2. Build imagen multi-stage (Dockerfile)
+  3. Push con múltiples tags:
+     - `ghcr.io/margarita0912/final-isw3:{SHA}` (commit específico, ej: `abc1234`)
+     - `ghcr.io/margarita0912/final-isw3:main-latest` (última versión de branch main)
+
+#### **Job 3: Deploy to QA**
+- **Duración:** ~3-5 minutos
+- **Condición:** `if: github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/main'`
+- **Acciones:**
+  1. Trigger deploy webhook de Render QA
+  2. Wait 60s para que Render complete el deploy
+  3. Wait-on hasta que QA responda (timeout 120s)
+  4. Ejecutar Cypress E2E tests contra QA_URL
+
+#### **Job 4: Deploy to Production**
+- **Duración:** ~1 minuto + tiempo de aprobación manual
+- **Condición:** Requiere que QA haya pasado exitosamente
+- **Acciones:**
+  1. **⏸️ Espera aprobación manual** (GitHub environment: production)
+  2. Pull imagen `main-latest` (la que está en QA)
+  3. Re-tag como `prod-release`
+  4. Push tag `prod-release`
+  5. Trigger deploy webhook de Render PROD
+
+---
+
+## 🏷️ Estrategia de Tags de Imágenes Docker
+
+### **Tags Generados por Build:**
+
+Cada vez que se hace build, se crean 2 tags:
+
+1. **Tag por SHA del commit** (inmutable, trazable)
+   - Formato: `ghcr.io/margarita0912/final-isw3:abc1234def5678`
+   - Uso: Identificar exactamente qué código contiene la imagen
+   - Ventaja: Rollback preciso a cualquier versión anterior
+
+2. **Tag por branch** (mutable, última versión)
+   - Formato: `ghcr.io/margarita0912/final-isw3:main-latest`
+   - Uso: QA siempre despliega la última versión de main
+   - Se sobrescribe con cada push nuevo
+
+### **Tags por Ambiente:**
+
+| Ambiente | Tag | Actualización | Uso |
+|----------|-----|---------------|-----|
+| **QA** | `main-latest` | Cada push a main | Deploy automático |
+| **PROD** | `prod-release` | Solo tras aprobación manual | Deploy controlado |
+
+### **Flujo de Tags:**
+
+```
+Push a main (commit abc123)
+  ↓
+Build crea tags:
+  - ghcr.io/.../final-isw3:abc123
+  - ghcr.io/.../final-isw3:main-latest (sobrescribe)
+  ↓
+QA usa: main-latest (despliega abc123)
+  ↓
+Tests E2E pasan ✓
+  ↓
+Aprobación manual en GitHub
+  ↓
+Pipeline re-tagea:
+  docker tag main-latest → prod-release
+  ↓
+PROD usa: prod-release (despliega abc123)
+```
+
+**Ventajas:**
+- ✅ QA siempre tiene lo último
+- ✅ PROD despliega versión específica aprobada
+- ✅ Si llega nuevo push mientras QA testea, no afecta PROD
+- ✅ Trazabilidad completa con SHA tags
+
+---
+
+## 🔐 Solución al Problema de Race Conditions
+
+### **Problema Original:**
+Si dos pipelines corren en paralelo:
+- Pipeline 1 despliega a QA → corre tests
+- Pipeline 2 sobrescribe la imagen `main-latest` mientras Pipeline 1 testea
+- Pipeline 1 aprueba a PROD → despliega imagen incorrecta (del Pipeline 2)
+
+### **Solución Implementada:**
+
+**1. Concurrency Queue (Secuencial)**
+```yaml
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # No cancelar, hacer cola secuencial
+```
+
+**Cómo funciona:**
+- Los pipelines se ejecutan **uno por uno en cola**, no en paralelo
+- Si llega un push mientras otro está corriendo, el nuevo **espera en cola**
+- Garantiza que cada pipeline completa QA → Tests → Aprobación antes del siguiente
+
+**2. Tags Separados por Ambiente**
+- **QA:** Usa `main-latest` (puede cambiar libremente)
+- **PROD:** Usa `prod-release` (solo cambia tras aprobación manual)
+
+**Ejemplo de ejecución:**
+```
+Timeline:
+─────────────────────────────────────────────────
+09:00 - Push commit A
+09:01 - Pipeline 1 inicia: Build → Deploy QA (main-latest = A)
+09:05 - Push commit B
+09:05 - Pipeline 2 ESPERA (en cola)
+09:06 - Pipeline 1: Tests E2E en QA (con imagen A) ✓
+09:08 - Pipeline 1: Aprobación manual → tag prod-release = A
+09:09 - Pipeline 1: Deploy PROD (prod-release = A) ✓
+09:10 - Pipeline 2 COMIENZA: Build → Deploy QA (main-latest = B)
+        (PROD sigue con prod-release = A, no se afecta)
+```
+
+**Ventajas:**
+- ✅ Elimina race conditions completamente
+- ✅ QA siempre testea la imagen correcta
+- ✅ PROD despliega exactamente lo que fue aprobado
+- ✅ Simple de implementar y mantener
+- ✅ No requiere infraestructura adicional
+
+---
+
+## 🗄️ Base de Datos
+
+**Proveedor:** Railway MySQL
+
+**Ambientes:**
+- **QA:** `witchyard.proxy.rlwy.net:20665` (db: `railway`)
+- **PROD:** `amanote.proxy.rlwy.net:50180` (db: `railway`)
+
+**Configuración:** Variables de entorno en Render
+
+---
+
+## 🚀 Deployment
+
+**Plataforma:** Render.com
+
+**Servicios:**
+- **QA:** `https://tp8-front-qa.onrender.com`
+- **PROD:** `https://tp8-front-prod.onrender.com`
+
+**Estrategia:**
+- Imagen Docker unificada (backend + frontend en un solo contenedor)
+- Backend (Go) sirve el frontend estático y expone API en `/api/*`
+- Auto-deploy habilitado al detectar nuevo tag en ghcr.io
+
+---
+
+## 📊 Code Quality
+
+**Herramienta:** SonarCloud
+
+**Métricas actuales:**
+- Backend: ~96% cobertura
+- Frontend: ~68% cobertura
+- Quality Gate: Configurado para requerir >60% coverage
+
+**Integración:** Job en pipeline analiza código después de tests unitarios
