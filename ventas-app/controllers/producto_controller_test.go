@@ -28,7 +28,8 @@ func TestListarProductos_OK(t *testing.T) {
 
 	router.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusNotFound, resp.Code) // Espera 404 pero recibe 200 = FALLA
+	assert.Equal(t, http.StatusOK, resp.Code)
+	// assert.Equal(t, http.StatusNotFound, resp.Code) // Espera 404 pero recibe 200 = FALLA
 }
 
 // Test: JSON malformado al crear producto
